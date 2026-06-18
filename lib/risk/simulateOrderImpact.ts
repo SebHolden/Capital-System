@@ -15,6 +15,7 @@ function toAllocationSnapshot(
 
 export function simulateOrderImpact(input: {
   cashBalance: number;
+  experimentalCashBalance?: number;
   positions: Array<{
     assetId: string;
     symbol: string;
@@ -33,8 +34,10 @@ export function simulateOrderImpact(input: {
     assetType?: AssetType;
   };
 }): OrderImpact {
+  const experimentalCash = input.experimentalCashBalance ?? 0;
   const before = evaluatePortfolio({
     cashBalance: input.cashBalance,
+    experimentalCashBalance: experimentalCash,
     positions: input.positions,
   });
 
@@ -91,14 +94,22 @@ export function simulateOrderImpact(input: {
   }
 
   let cashAfter = input.cashBalance;
+  let experimentalCashAfter = experimentalCash;
   if (input.order.side === "BUY") {
-    cashAfter = input.cashBalance - orderAmount;
+    if (orderBucket === "SPECULATIVE") {
+      experimentalCashAfter = experimentalCash - orderAmount;
+    } else {
+      cashAfter = input.cashBalance - orderAmount;
+    }
+  } else if (orderBucket === "SPECULATIVE") {
+    experimentalCashAfter = experimentalCash + orderAmount;
   } else {
     cashAfter = input.cashBalance + orderAmount;
   }
 
   const after = evaluatePortfolio({
     cashBalance: cashAfter,
+    experimentalCashBalance: experimentalCashAfter,
     positions: positionsAfter,
   });
 

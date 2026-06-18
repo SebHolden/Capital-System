@@ -34,6 +34,8 @@ const updateSettingsSchema = z
     assetPumpLookbackDays: z.number().int().min(1).max(90).optional(),
     maxAssetVolatilityPct: z.number().min(1).max(200).optional(),
     revengeTradingLossPct: z.number().min(0.1).max(20).optional(),
+    experimentalCapital: z.number().min(0).optional(),
+    experimentalCashBalance: z.number().min(0).optional(),
     tradingWindowEnabled: z.boolean().optional(),
     tradingStartHour: z.number().int().min(0).max(23).optional(),
     tradingEndHour: z.number().int().min(1).max(24).optional(),

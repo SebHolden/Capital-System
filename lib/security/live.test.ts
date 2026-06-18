@@ -39,6 +39,8 @@ function mockSettings(
     assetPumpLookbackDays: 7,
     maxAssetVolatilityPct: 80,
     revengeTradingLossPct: 1,
+    experimentalCapital: 0,
+    experimentalCashBalance: 0,
     updatedAt: new Date(),
     ...overrides,
   };

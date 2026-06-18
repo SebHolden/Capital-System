@@ -138,6 +138,7 @@ async function buildRiskContext(input: SimulateOrderInput) {
 
   const impact = simulateOrderImpact({
     cashBalance: syncedSettings.cashBalance,
+    experimentalCashBalance: syncedSettings.experimentalCashBalance,
     positions: mappedPositions,
     order: {
       assetId: asset.id,

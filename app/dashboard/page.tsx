@@ -24,6 +24,8 @@ export default async function DashboardPage() {
     exposure,
     riskScore,
     operations,
+    realizedPnl,
+    capitalSplit,
   } = summary;
 
   const dailyPnl = riskMetrics.daily.pnlAmount;
@@ -78,6 +80,9 @@ export default async function DashboardPage() {
         <Card>
           <CardTitle>Liquidità</CardTitle>
           <CardValue>{formatCurrency(portfolio.cashBalance)}</CardValue>
+          <p className="mt-1 text-xs text-slate-500">
+            Sperimentale: {formatCurrency(capitalSplit.experimentalCashBalance)}
+          </p>
         </Card>
         <Card>
           <CardTitle>Investito</CardTitle>
@@ -114,6 +119,9 @@ export default async function DashboardPage() {
             {formatCurrency(exposure.lifetimePnl)} (
             {formatPct(exposure.lifetimePnlPct)})
           </CardValue>
+          <p className="mt-1 text-xs text-slate-500">
+            Realizzato: {formatCurrency(realizedPnl.total)}
+          </p>
         </Card>
         <Card>
           <CardTitle>Risk score</CardTitle>
