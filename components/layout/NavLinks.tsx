@@ -7,11 +7,14 @@ import { cn } from "@/lib/utils";
 const links = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/portfolio", label: "Portfolio" },
+  { href: "/research", label: "Research" },
+  { href: "/strategies", label: "Strategie" },
+  { href: "/backtests", label: "Backtest" },
+  { href: "/signals", label: "Segnali" },
   { href: "/orders", label: "Ordini" },
   { href: "/journal", label: "Journal" },
+  { href: "/execution", label: "Esecuzione" },
   { href: "/reports", label: "Report" },
-  { href: "/backtests", label: "Backtest" },
-  { href: "/strategies", label: "Strategie" },
   { href: "/settings", label: "Impostazioni" },
 ];
 

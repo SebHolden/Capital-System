@@ -134,6 +134,25 @@ export default async function DashboardPage() {
         </Card>
       </div>
 
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Card>
+          <CardTitle>Capitale principale</CardTitle>
+          <CardValue>{formatCurrency(capitalSplit.mainTotal)}</CardValue>
+          <p className="mt-1 text-xs text-slate-500">
+            Liquidità main: {formatCurrency(settings.cashBalance)}
+          </p>
+        </Card>
+        <Card>
+          <CardTitle>Capitale sperimentale</CardTitle>
+          <CardValue>{formatCurrency(capitalSplit.experimentalTotal)}</CardValue>
+          <p className="mt-1 text-xs text-slate-500">
+            Budget: {formatCurrency(capitalSplit.experimentalCapital)} · Cash lab:{" "}
+            {formatCurrency(capitalSplit.experimentalCashBalance)} · Investito:{" "}
+            {formatCurrency(capitalSplit.speculativeInvested)}
+          </p>
+        </Card>
+      </div>
+
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardTitle>PnL giornaliero</CardTitle>

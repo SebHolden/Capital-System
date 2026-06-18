@@ -2,6 +2,7 @@ import { timingSafeEqual } from "crypto";
 import type { UserSettings } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { isAlpacaConfigured } from "@/lib/brokers";
+import { fetchAlpacaAccount } from "@/lib/brokers/alpaca-account";
 import { computeRiskMetrics } from "@/lib/risk/baselines";
 
 function isLiveTradingEnabledEnv(): boolean {
@@ -114,6 +115,50 @@ export function checkLiveOrderLimits(
   return { allowed: true };
 }
 
+async function checkAlpacaLiveAccountItem(): Promise<ChecklistItem> {
+  if (!isAlpacaConfigured()) {
+    return {
+      id: "alpaca_account_reachable",
+      label: "Account Alpaca LIVE raggiungibile",
+      passed: false,
+      required: false,
+      detail: "Alpaca non configurato.",
+    };
+  }
+
+  if (!isLiveTradingEnabledEnv()) {
+    return {
+      id: "alpaca_account_reachable",
+      label: "Account Alpaca LIVE raggiungibile",
+      passed: false,
+      required: false,
+      detail: "ENABLE_LIVE_TRADING non è true.",
+    };
+  }
+
+  try {
+    const account = await fetchAlpacaAccount("LIVE");
+    const passed = !account.trading_blocked && !account.account_blocked;
+    return {
+      id: "alpaca_account_reachable",
+      label: "Account Alpaca LIVE raggiungibile",
+      passed,
+      required: false,
+      detail: passed
+        ? `Account attivo (${account.status}).`
+        : "Account o trading bloccati su Alpaca.",
+    };
+  } catch {
+    return {
+      id: "alpaca_account_reachable",
+      label: "Account Alpaca LIVE raggiungibile",
+      passed: false,
+      required: false,
+      detail: "Impossibile contattare l'API account Alpaca LIVE.",
+    };
+  }
+}
+
 export async function getBrokerPermissionsChecklist(
   settings?: UserSettings,
   portfolioTotalValue?: number,
@@ -122,10 +167,11 @@ export async function getBrokerPermissionsChecklist(
     settings ??
     (await prisma.userSettings.findUnique({ where: { id: "default" } }));
 
-  const [promoted, dailyUsed, monthlyUsed] = await Promise.all([
+  const [promoted, dailyUsed, monthlyUsed, alpacaAccountItem] = await Promise.all([
     hasPromotedStrategy(),
     getDailyLiveVolume(),
     getMonthlyLiveVolume(),
+    checkAlpacaLiveAccountItem(),
   ]);
 
   const dailyLimit = userSettings?.maxDailyLiveAmount ?? 2000;
@@ -183,6 +229,7 @@ export async function getBrokerPermissionsChecklist(
       detail:
         "Solo simboli USA compatibili Alpaca. ETF seed EU (SWDA, EIMI) non eseguibili in LIVE.",
     },
+    alpacaAccountItem,
   ];
 
   if (userSettings && portfolioTotalValue !== undefined) {

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { syncBrokerAccountSnapshot } from "@/lib/brokers/alpaca-account";
-import { CsrfError, verifyCsrfRequest, writeAuditLog } from "@/lib/security";
+import { mapMutatingSecurityError, verifyMutatingRequest, writeAuditLog } from "@/lib/security";
 
 const bodySchema = z.object({
   mode: z.enum(["PAPER", "LIVE"]).default("PAPER"),
@@ -9,7 +9,7 @@ const bodySchema = z.object({
 
 export async function POST(request: Request) {
   try {
-    verifyCsrfRequest(request);
+    verifyMutatingRequest(request);
     const body = await request.json().catch(() => ({}));
     const parsed = bodySchema.safeParse(body);
 
@@ -30,12 +30,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ snapshot });
   } catch (error) {
-    if (error instanceof CsrfError) {
-      return NextResponse.json(
-        { error: error.message, code: "CSRF_ERROR" },
-        { status: 403 },
-      );
-    }
+    const securityError = mapMutatingSecurityError(error);
+    if (securityError) return securityError;
     console.error(error);
     return NextResponse.json(
       {

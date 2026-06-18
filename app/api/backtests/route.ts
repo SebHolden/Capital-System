@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { listBacktestRuns, runBacktest } from "@/lib/backtesting";
 import { runBacktestSchema } from "@/lib/backtesting/schemas";
-import { CsrfError, verifyCsrfRequest } from "@/lib/security";
+import { mapMutatingSecurityError, verifyMutatingRequest } from "@/lib/security";
 
 export async function GET() {
   try {
@@ -18,7 +18,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    verifyCsrfRequest(request);
+    verifyMutatingRequest(request);
     const body = await request.json();
     const parsed = runBacktestSchema.safeParse(body);
 
@@ -49,6 +49,7 @@ export async function POST(request: Request) {
       slippageBps: parsed.data.slippageBps,
       config: parsed.data.config,
       rebalanceAssetIds: parsed.data.rebalanceAssetIds,
+      walkForward: parsed.data.walkForward,
     });
 
     return NextResponse.json({
@@ -61,12 +62,8 @@ export async function POST(request: Request) {
       tradeCount: output.result.trades.length,
     });
   } catch (error) {
-    if (error instanceof CsrfError) {
-      return NextResponse.json(
-        { error: error.message, code: "CSRF_ERROR" },
-        { status: 403 },
-      );
-    }
+    const securityError = mapMutatingSecurityError(error);
+    if (securityError) return securityError;
     console.error(error);
     const message =
       error instanceof Error ? error.message : "Errore nell'esecuzione del backtest.";

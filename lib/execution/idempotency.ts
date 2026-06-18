@@ -75,6 +75,19 @@ export async function findExistingExecution(
     },
   };
 
+  if (existing.status === "PENDING" && !executionLog) {
+    return {
+      ...response,
+      executionIncomplete: true,
+      execution: {
+        success: false,
+        fillPrice: null,
+        message:
+          "Stato esecuzione incompleto: ordine in sospeso senza execution log.",
+      },
+    };
+  }
+
   if (executionLog) {
     response.execution = {
       success: executionLog.status === "FILLED",
@@ -82,7 +95,31 @@ export async function findExistingExecution(
       message: executionLog.message,
       brokerOrderId: executionLog.brokerOrderId ?? undefined,
     };
+    return response;
   }
 
-  return response;
+  if (existing.status === "REJECTED") {
+    response.execution = {
+      success: false,
+      fillPrice: null,
+      message: "Rifiutato dal risk gate.",
+    };
+    response.riskDecision = {
+      ...response.riskDecision,
+      blocked: true,
+    };
+    return response;
+  }
+
+  if (existing.status === "EXECUTED") {
+    response.executionIncomplete = true;
+    response.execution = {
+      success: false,
+      fillPrice: null,
+      message: "Ordine incompleto: execution log assente.",
+    };
+    return response;
+  }
+
+  return null;
 }

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { applyJournalScoring } from "@/lib/journal";
-import { CsrfError, verifyCsrfRequest, writeAuditLog } from "@/lib/security";
+import { mapMutatingSecurityError, verifyMutatingRequest, writeAuditLog } from "@/lib/security";
 const journalFieldsSchema = {
   title: z.string().min(1).max(200),
   thesis: z.string().min(10),
@@ -36,7 +36,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    verifyCsrfRequest(request);
+    verifyMutatingRequest(request);
     const body = await request.json();
     const parsed = createJournalSchema.safeParse(body);
 
@@ -57,12 +57,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ journal }, { status: 201 });
   } catch (error) {
-    if (error instanceof CsrfError) {
-      return NextResponse.json(
-        { error: error.message, code: "CSRF_ERROR" },
-        { status: 403 },
-      );
-    }
+    const securityError = mapMutatingSecurityError(error);
+    if (securityError) return securityError;
     console.error(error);
     return NextResponse.json(
       { error: "Errore nella creazione del journal.", code: "JOURNAL_CREATE_ERROR" },

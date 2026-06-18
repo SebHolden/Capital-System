@@ -59,4 +59,10 @@ export interface RunBacktestInput {
   slippageBps?: number;
   config?: Record<string, unknown>;
   rebalanceAssetIds?: string[];
+  walkForward?: {
+    enabled: boolean;
+    trainBars: number;
+    testBars: number;
+    stepBars: number;
+  };
 }

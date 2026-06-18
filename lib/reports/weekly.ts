@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { getJournalQualitySummary } from "@/lib/journal";
 import { getUserSettings } from "@/lib/security";
 import { findImpulsiveTrades, listOrderActivity } from "./aggregators";
+import { buildIntentOutcomes } from "./intentOutcomes";
 import type { WeeklyReport } from "./types";
 import {
   getDateKeyInTimezone,
@@ -16,7 +17,8 @@ export async function buildWeeklyReport(
     weekStartKey ?? getDateKeyInTimezone(settings.tradingTimezone);
   const { since, until, weekEndKey } = weekBoundsFromStart(weekStart);
 
-  const [snapshots, journalReview, orders, impulsiveTrades] = await Promise.all([
+  const [snapshots, journalReview, orders, impulsiveTrades, intentOutcomes] =
+    await Promise.all([
     prisma.portfolioSnapshot.findMany({
       where: {
         snapshotDate: { gte: weekStart, lte: weekEndKey },
@@ -26,6 +28,7 @@ export async function buildWeeklyReport(
     getJournalQualitySummary(prisma, { since, until }),
     listOrderActivity({ since, until }),
     findImpulsiveTrades({ since, until }),
+    buildIntentOutcomes({ since, until }),
   ]);
 
   const values = snapshots.map((s) => s.totalValue);
@@ -76,5 +79,6 @@ export async function buildWeeklyReport(
       impulsiveTrades,
     },
     exposure,
+    intentOutcomes,
   };
 }

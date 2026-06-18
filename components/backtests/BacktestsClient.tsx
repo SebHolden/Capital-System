@@ -54,6 +54,27 @@ interface PerformanceMetrics {
   finalValue: number;
 }
 
+interface WalkForwardFold {
+  foldIndex: number;
+  trainStartDate: string;
+  trainEndDate: string;
+  testStartDate: string;
+  testEndDate: string;
+  inSample: PerformanceMetrics;
+  outOfSample: PerformanceMetrics;
+}
+
+interface WalkForwardResult {
+  folds: WalkForwardFold[];
+  aggregate: {
+    foldCount: number;
+    avgInSampleReturnPct: number;
+    avgOutOfSampleReturnPct: number;
+    avgInSampleMaxDrawdownPct: number;
+    avgOutOfSampleMaxDrawdownPct: number;
+  } | null;
+}
+
 interface BacktestDetail {
   id: string;
   status: string;
@@ -64,7 +85,10 @@ interface BacktestDetail {
   endDate: string;
   strategy: { name: string; type: string };
   asset: { symbol: string; name: string };
-  metrics: PerformanceMetrics;
+  metrics: PerformanceMetrics & {
+    outOfSample?: PerformanceMetrics | null;
+    walkForward?: WalkForwardResult;
+  };
   benchmark: PerformanceMetrics | null;
   equityCurve: Array<{ date: string; value: number }>;
   trades: Array<{
@@ -164,6 +188,10 @@ export function BacktestsClient({
     monthlyAmountEur: "250",
     fastPeriod: "20",
     slowPeriod: "50",
+    walkForwardEnabled: false,
+    trainBars: "60",
+    testBars: "30",
+    stepBars: "30",
   });
 
   const chartData = useMemo(() => {
@@ -222,6 +250,14 @@ export function BacktestsClient({
           initialCapital: parseFloat(form.initialCapital),
           config,
           rebalanceAssetIds,
+          walkForward: form.walkForwardEnabled
+            ? {
+                enabled: true,
+                trainBars: parseInt(form.trainBars, 10),
+                testBars: parseInt(form.testBars, 10),
+                stepBars: parseInt(form.stepBars, 10),
+              }
+            : undefined,
         }),
       });
 
@@ -370,6 +406,53 @@ export function BacktestsClient({
           )}
         </div>
 
+        <div className="mt-4 space-y-3 rounded-lg border border-slate-800 p-4">
+          <label className="flex items-center gap-2 text-sm text-slate-300">
+            <input
+              type="checkbox"
+              checked={form.walkForwardEnabled}
+              onChange={(e) =>
+                setForm({ ...form, walkForwardEnabled: e.target.checked })
+              }
+            />
+            Walk-forward rolling (IS/OOS per fold)
+          </label>
+          {form.walkForwardEnabled && (
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div>
+                <Label>Train bars</Label>
+                <Input
+                  type="number"
+                  value={form.trainBars}
+                  onChange={(e) =>
+                    setForm({ ...form, trainBars: e.target.value })
+                  }
+                />
+              </div>
+              <div>
+                <Label>Test bars</Label>
+                <Input
+                  type="number"
+                  value={form.testBars}
+                  onChange={(e) =>
+                    setForm({ ...form, testBars: e.target.value })
+                  }
+                />
+              </div>
+              <div>
+                <Label>Step bars</Label>
+                <Input
+                  type="number"
+                  value={form.stepBars}
+                  onChange={(e) =>
+                    setForm({ ...form, stepBars: e.target.value })
+                  }
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
         <div className="mt-4">
           <Button onClick={runBacktest} disabled={loading || !form.assetId}>
             Esegui backtest
@@ -449,6 +532,69 @@ export function BacktestsClient({
               )}
             </div>
           </Card>
+
+          {detail.metrics.walkForward &&
+            detail.metrics.walkForward.folds.length > 0 && (
+              <Card>
+                <CardTitle>Walk-forward IS/OOS</CardTitle>
+                {detail.metrics.walkForward.aggregate && (
+                  <p className="mt-2 text-sm text-slate-400">
+                    {detail.metrics.walkForward.aggregate.foldCount} fold — IS
+                    medio{" "}
+                    {formatPct(
+                      detail.metrics.walkForward.aggregate
+                        .avgInSampleReturnPct,
+                    )}
+                    , OOS medio{" "}
+                    {formatPct(
+                      detail.metrics.walkForward.aggregate
+                        .avgOutOfSampleReturnPct,
+                    )}
+                  </p>
+                )}
+                <div className="mt-3 overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-700 text-left text-slate-500">
+                        <th className="pb-2 pr-4">Fold</th>
+                        <th className="pb-2 pr-4">Test period</th>
+                        <th className="pb-2 pr-4">IS return</th>
+                        <th className="pb-2 pr-4">OOS return</th>
+                        <th className="pb-2 pr-4">IS max DD</th>
+                        <th className="pb-2">OOS max DD</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {detail.metrics.walkForward.folds.map((fold) => (
+                        <tr
+                          key={fold.foldIndex}
+                          className="border-b border-slate-800"
+                        >
+                          <td className="py-2 pr-4 text-slate-300">
+                            {fold.foldIndex}
+                          </td>
+                          <td className="py-2 pr-4 text-slate-400">
+                            {fold.testStartDate} → {fold.testEndDate}
+                          </td>
+                          <td className="py-2 pr-4 text-slate-300">
+                            {formatPct(fold.inSample.totalReturnPct)}
+                          </td>
+                          <td className="py-2 pr-4 text-slate-300">
+                            {formatPct(fold.outOfSample.totalReturnPct)}
+                          </td>
+                          <td className="py-2 pr-4 text-slate-400">
+                            {formatPct(fold.inSample.maxDrawdownPct)}
+                          </td>
+                          <td className="py-2 text-slate-400">
+                            {formatPct(fold.outOfSample.maxDrawdownPct)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            )}
 
           <Card>
             <CardTitle>Equity curve</CardTitle>

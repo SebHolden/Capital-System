@@ -6,7 +6,7 @@ import {
   csvRowSchema,
   parsePortfolioCsv,
 } from "@/lib/portfolio/import";
-import { CsrfError, verifyCsrfRequest, writeAuditLog } from "@/lib/security";
+import { mapMutatingSecurityError, verifyMutatingRequest, writeAuditLog } from "@/lib/security";
 
 const previewSchema = z.object({
   action: z.literal("preview"),
@@ -22,7 +22,7 @@ const bodySchema = z.discriminatedUnion("action", [previewSchema, commitSchema])
 
 export async function POST(request: Request) {
   try {
-    verifyCsrfRequest(request);
+    verifyMutatingRequest(request);
     const body = await request.json();
     const parsed = bodySchema.safeParse(body);
 
@@ -56,12 +56,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json(result);
   } catch (error) {
-    if (error instanceof CsrfError) {
-      return NextResponse.json(
-        { error: error.message, code: "CSRF_INVALID" },
-        { status: 403 },
-      );
-    }
+    const securityError = mapMutatingSecurityError(error);
+    if (securityError) return securityError;
     console.error(error);
     return NextResponse.json(
       { error: "Errore import CSV.", code: "IMPORT_ERROR" },

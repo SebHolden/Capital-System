@@ -13,7 +13,7 @@ export interface PriceBar {
 
 export interface PriceHistoryResult {
   bars: PriceBar[];
-  dataSource: "coingecko" | "finnhub" | "synthetic";
+  dataSource: "coingecko" | "finnhub" | "synthetic" | "database";
   warning?: string;
 }
 
@@ -155,6 +155,23 @@ export async function fetchPriceHistory(
   const maxMs = maxYears * 365 * 24 * 60 * 60 * 1000;
   if (to.getTime() - from.getTime() > maxMs) {
     throw new Error(`Intervallo massimo consentito: ${maxYears} anni.`);
+  }
+
+  const fromKey = toDateKey(from);
+  const toKey = toDateKey(to);
+  const dbRows = await prisma.historicalPrice.findMany({
+    where: {
+      assetId: asset.id,
+      priceDate: { gte: fromKey, lte: toKey },
+    },
+    orderBy: { priceDate: "asc" },
+  });
+
+  if (dbRows.length >= 2) {
+    return {
+      bars: dbRows.map((row) => ({ date: row.priceDate, close: row.close })),
+      dataSource: "database",
+    };
   }
 
   if (isCryptoAsset(asset.assetType)) {

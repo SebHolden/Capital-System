@@ -76,16 +76,53 @@ prisma/
   seed.ts        # Scenario iniziale €10.000
 ```
 
+## Quant Architecture
+
+Flusso end-to-end (nessun path diretto Signal → Broker):
+
+```
+Research → Strategy → Backtest → PaperSignal → Risk Gate → Execution → Broker
+```
+
+| Addendum | Path nel repo |
+|----------|----------------|
+| Research layer | `lib/research/`, `/research`, `GET /api/research/summary` |
+| Storico prezzi DB | `HistoricalPrice`, `lib/prices/history.ts` (DB-first), import CSV |
+| Strategie | `lib/strategies/`, `/strategies` |
+| Backtest + OOS | `lib/backtesting/`, walk-forward in `walkForward.ts` |
+| Paper signals | `lib/paper-signals/` (alias `lib/paper/`) |
+| Segnali UI | `/signals` (sola lettura) |
+| Risk gate | `lib/risk/gate.ts`, check modulari in `lib/risk/checks/` |
+| Execution audit | `/execution`, `GET /api/execution/logs` |
+| Execution | `lib/execution/` (MOCK / PAPER / LIVE) |
+
+Check di sicurezza aggiuntivi nel gate:
+
+- **Stale/missing price** — blocca BUY se il prezzo è stale o mancante
+- **Rejected cooldown** — blocca ordini dopo un REJECTED recente (`rejectedOrderCooldownMinutes`)
+- **Averaging down** — opzionale (`rejectAveragingDown`)
+
+## Documentazione architettura
+
+Documentazione di riferimento (solo testo, nessuna integrazione attiva):
+
+| Documento | Contenuto |
+|-----------|-----------|
+| [docs/architecture-rules.md](docs/architecture-rules.md) | Regole obbligatorie: pipeline ordini, LIVE checklist, anti-pattern |
+| [docs/reference-architecture.md](docs/reference-architecture.md) | Cosa imparare da Alpaca-py, Freqtrade, VectorBT, Backtrader, Zipline, NautilusTrader, Lean, Hummingbot |
+| [docs/future-python-sidecar.md](docs/future-python-sidecar.md) | Design sidecar Python read-only per research (non implementato) |
+
 ## Allineamento spec (gap remediation)
 
 - **allowedAmount** — enforced in esecuzione (ordine rifiutato se importo > massimo consentito)
 - **FX EUR** — quote Finnhub USD convertite via `lib/prices/fx.ts`
 - **CSRF** — token double-submit su route mutanti (execution, settings, portfolio, journal, backtests, paper-signals, prices refresh, broker sync)
-- **Auth deploy** — `middleware.ts` con `APP_PASSWORD` (Basic Auth opzionale)
+- **Auth deploy** — `middleware.ts` con `APP_PASSWORD` (obbligatoria in production, opzionale in development)
 - **EXECUTION_MODE env** — sincronizzato al DB al primo `getUserSettings()`; runtime da Settings UI
 - **BrokerAccountSnapshot** — sync Alpaca paper/live via Settings o `POST /api/broker/sync`
 - **Risk avanzato** — single-crypto cap, pump lookback, volatilità, revenge trading, concentrazione, leva
-- **Portfolio** — import CSV broker, peso % posizioni
+- **Portfolio** — import CSV broker, peso % posizioni, PnL realizzato + unrealized
+- **Capitale sperimentale** — `experimentalCapital` / `experimentalCashBalance` separati dal main
 - **Dashboard** — esposizione per categoria/asset, risk score 0–100, operazioni consentite/vietate
 - **Strategie** — Momentum, Buy the dip, Volatility filter, Core satellite + gate OOS per paper
 - **Broker** — interfaccia estesa (`getAccount`, `getPositions`, `cancelOrder`); stub Coinbase/Kraken/IB
@@ -104,7 +141,7 @@ prisma/
 
 1. Nessuna API key nel client — solo in `.env.local` lato server
 2. `ENABLE_LIVE_TRADING=false` di default — nessun ordine live
-3. **Deploy non-locale:** imposta `APP_PASSWORD` per Basic Auth su tutte le route
+3. **Deploy production:** imposta `APP_PASSWORD` (obbligatoria) e `APP_BASE_URL` (Origin check CSRF)
 4. Ogni ordine passa da: risk gate → journal → kill switch → limiti importo
 4. Risk `RED` o `BLACK` → ordine bloccato (`BLACK` solo con kill switch)
 5. Journal assente/incompleto → ordine bloccato
@@ -121,7 +158,8 @@ Vedi [`.env.example`](.env.example):
 DATABASE_URL="file:./dev.db"
 EXECUTION_MODE=mock   # sync opzionale al DB al boot
 ENABLE_LIVE_TRADING=false
-# APP_PASSWORD=       # Basic Auth (consigliato fuori da localhost)
+# APP_BASE_URL=http://localhost:3000
+# APP_PASSWORD=       # Obbligatoria in production (NODE_ENV=production)
 FX_PROVIDER=exchangerate.host
 EUR_USD_RATE=         # fallback offline USD->EUR
 ```
@@ -333,13 +371,33 @@ npm run reports:daily
 
 Windows Task Scheduler: azione `npm run reports:daily` nella cartella progetto, trigger giornaliero (es. 23:00). Linux/macOS: `cron` con `0 23 * * * cd /path/to/project && npm run reports:daily`.
 
+## PostgreSQL (migrazione opzionale)
+
+SQLite è sufficiente per uso personale locale. Considera PostgreSQL quando:
+
+- serve backup/restore centralizzato o hosting remoto
+- crescono snapshot storici e report (volume dati)
+- più utenti o agenti accedono allo stesso DB
+
+**Passi:**
+
+1. Crea database PostgreSQL e imposta `DATABASE_URL` in `.env.local`:
+   ```env
+   DATABASE_URL="postgresql://user:pass@host:5432/seb_capital?schema=public"
+   ```
+2. In [`prisma/schema.prisma`](prisma/schema.prisma) cambia `provider = "postgresql"` nel datasource (solo se migri definitivamente).
+3. Applica schema: `npx prisma migrate deploy`
+4. Seed: `npm run db:seed`
+
+**SQLite → PostgreSQL:** per MVP conviene `npm run db:reset` sul nuovo DB e re-import portfolio; per dati produzione esportare tabelle critiche (`Position`, `TradeJournal`, `ExecutionLog`) via script custom.
+
 ## Definition of Success (checklist manuale)
 
 | # | Criterio | Verifica |
 |---|----------|----------|
 | 1 | Non superare limiti | Ordine oltre `maxOrderAmount` / LIVE limits → bloccato |
 | 2 | Decisioni tracciate | `AuditLog`, `RiskDecision`, report M10 |
-| 3 | Capitale sperimentale | Bucket `SPECULATIVE` + `maxExperimentalPct` |
+| 3 | Capitale sperimentale | Budget dedicato `experimentalCapital` + liquidità `experimentalCashBalance` + bucket `SPECULATIVE` |
 | 4 | Live dopo mock/paper | LIVE richiede PROMOTED + checklist M9 |
 | 5 | Misurare nel tempo | `/reports` decision quality + snapshot |
 | 6 | Ridurre impulsività | Emotion ≥ 8 blocca; journal obbligatorio |

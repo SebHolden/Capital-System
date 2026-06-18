@@ -5,7 +5,7 @@ import {
   getPortfolioSummary,
   getPositionsWithAssets,
 } from "@/lib/portfolio";
-import { writeAuditLog, CsrfError, verifyCsrfRequest } from "@/lib/security";
+import { writeAuditLog, mapMutatingSecurityError, verifyMutatingRequest } from "@/lib/security";
 
 const createPositionSchema = z.object({
   symbol: z.string().min(1).max(20),
@@ -36,7 +36,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    verifyCsrfRequest(request);
+    verifyMutatingRequest(request);
     const body = await request.json();
     const parsed = createPositionSchema.safeParse(body);
 
@@ -52,12 +52,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ position }, { status: 201 });
   } catch (error) {
-    if (error instanceof CsrfError) {
-      return NextResponse.json(
-        { error: error.message, code: "CSRF_ERROR" },
-        { status: 403 },
-      );
-    }
+    const securityError = mapMutatingSecurityError(error);
+    if (securityError) return securityError;
     console.error(error);
     return NextResponse.json(
       { error: "Errore nella creazione della posizione.", code: "POSITION_CREATE_ERROR" },

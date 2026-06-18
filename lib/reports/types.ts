@@ -50,6 +50,7 @@ export interface DailyReport {
     monthlyPnlAmount: number;
     monthlyPnlPct: number;
     drawdownPct: number;
+    realizedPnlTotal: number;
   };
   risk: {
     level: string;
@@ -91,6 +92,21 @@ export interface WeeklyReport {
     bucketPcts: Record<string, number>;
     cryptoPct: number;
   } | null;
+  intentOutcomes: IntentOutcomeRow[];
+}
+
+export interface IntentOutcomeRow {
+  orderIntentId: string;
+  symbol: string;
+  side: string;
+  fillPrice: number | null;
+  quantity: number;
+  pnlAmount: number | null;
+  maxAcceptableLoss: number;
+  withinLossLimit: boolean | null;
+  journalTitle: string | null;
+  exitRule: string | null;
+  note: string;
 }
 
 export interface StrategyPerformanceRow {

@@ -1,19 +1,15 @@
 import { NextResponse } from "next/server";
 import { generatePaperSignals } from "@/lib/paper-signals";
-import { CsrfError, verifyCsrfRequest } from "@/lib/security";
+import { mapMutatingSecurityError, verifyMutatingRequest } from "@/lib/security";
 
 export async function POST(request: Request) {
   try {
-    verifyCsrfRequest(request);
+    verifyMutatingRequest(request);
     const result = await generatePaperSignals();
     return NextResponse.json(result);
   } catch (error) {
-    if (error instanceof CsrfError) {
-      return NextResponse.json(
-        { error: error.message, code: "CSRF_ERROR" },
-        { status: 403 },
-      );
-    }
+    const securityError = mapMutatingSecurityError(error);
+    if (securityError) return securityError;
     console.error(error);
     const message =
       error instanceof Error ? error.message : "Errore generazione segnali.";

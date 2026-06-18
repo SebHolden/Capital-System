@@ -9,11 +9,11 @@ import {
 import { IdempotencyKeyError } from "@/lib/execution/idempotency";
 import { ExecutionRateLimitError } from "@/lib/execution/rateLimit";
 import { executeOrderSchema } from "@/lib/execution/schemas";
-import { CsrfError, verifyCsrfRequest } from "@/lib/security";
+import { mapMutatingSecurityError, verifyMutatingRequest } from "@/lib/security";
 
 export async function POST(request: Request) {
   try {
-    verifyCsrfRequest(request);
+    verifyMutatingRequest(request);
     const body = await request.json();
     const parsed = executeOrderSchema.safeParse(body);
 
@@ -82,12 +82,8 @@ export async function POST(request: Request) {
       );
     }
 
-    if (error instanceof CsrfError) {
-      return NextResponse.json(
-        { error: error.message, code: "CSRF_INVALID" },
-        { status: 403 },
-      );
-    }
+    const securityError = mapMutatingSecurityError(error);
+    if (securityError) return securityError;
 
     console.error(error);
     return NextResponse.json(

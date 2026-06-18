@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { refreshPrices } from "@/lib/prices";
-import { writeAuditLog, CsrfError, verifyCsrfRequest } from "@/lib/security";
+import { writeAuditLog, mapMutatingSecurityError, verifyMutatingRequest } from "@/lib/security";
 
 const bodySchema = z.object({
   assetIds: z.array(z.string()).optional(),
@@ -9,7 +9,7 @@ const bodySchema = z.object({
 
 export async function POST(request: Request) {
   try {
-    verifyCsrfRequest(request);
+    verifyMutatingRequest(request);
     const url = new URL(request.url);
     const assetIdParam = url.searchParams.get("assetId");
 
@@ -37,12 +37,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json(result);
   } catch (error) {
-    if (error instanceof CsrfError) {
-      return NextResponse.json(
-        { error: error.message, code: "CSRF_ERROR" },
-        { status: 403 },
-      );
-    }
+    const securityError = mapMutatingSecurityError(error);
+    if (securityError) return securityError;
     console.error(error);
     return NextResponse.json(
       { error: "Errore nel refresh prezzi.", code: "PRICES_REFRESH_ERROR" },

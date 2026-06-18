@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "crypto";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
@@ -10,9 +11,23 @@ function unauthorized(): NextResponse {
   });
 }
 
+function authNotConfigured(): NextResponse {
+  return new NextResponse("APP_PASSWORD non configurata.", { status: 500 });
+}
+
+function safePasswordEqual(provided: string, expected: string): boolean {
+  const providedBuf = Buffer.from(provided);
+  const expectedBuf = Buffer.from(expected);
+  if (providedBuf.length !== expectedBuf.length) return false;
+  return timingSafeEqual(providedBuf, expectedBuf);
+}
+
 export function middleware(request: NextRequest) {
   const password = process.env.APP_PASSWORD?.trim();
   if (!password) {
+    if (process.env.NODE_ENV === "production") {
+      return authNotConfigured();
+    }
     return NextResponse.next();
   }
 
@@ -33,7 +48,7 @@ export function middleware(request: NextRequest) {
   const providedPassword =
     colon >= 0 ? decoded.slice(colon + 1) : decoded;
 
-  if (providedPassword !== password) {
+  if (!safePasswordEqual(providedPassword, password)) {
     return unauthorized();
   }
 

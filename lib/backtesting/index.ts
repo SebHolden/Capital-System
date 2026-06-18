@@ -16,6 +16,7 @@ import {
 } from "./costs";
 import { computeMetrics } from "./metrics";
 import { runOutOfSampleMetrics, splitBars } from "./oos";
+import { runWalkForward } from "./walkForward";
 import { parseStrategyConfig } from "./schemas";
 import { runSimulation } from "./runner";
 import type { BacktestSimulationResult, RunBacktestInput } from "./types";
@@ -147,10 +148,85 @@ export async function runBacktest(
     oosMetrics.totalReturnPct >= minOosReturn &&
     oosMetrics.maxDrawdownPct <= maxOosDrawdown;
 
+  let walkForwardPayload: ReturnType<typeof runWalkForward> | null = null;
+  if (input.walkForward?.enabled) {
+    const wfConfig = input.walkForward;
+    walkForwardPayload = runWalkForward({
+      bars: primaryHistory.bars,
+      trainBars: wfConfig.trainBars,
+      testBars: wfConfig.testBars,
+      stepBars: wfConfig.stepBars,
+      evaluateFold: (trainBars, testBars) => {
+        const trainBarsMap = new Map(barsByAssetId);
+        trainBarsMap.set(primaryAsset.id, trainBars);
+        const trainSignals = strategyDef.generateSignals(
+          {
+            bars: trainBars,
+            assetId: primaryAsset.id,
+            assetSymbol: primaryAsset.symbol,
+            initialCapital,
+            extraBarsByAssetId: trainBarsMap,
+          },
+          config,
+        );
+        const trainSim = runSimulation({
+          primaryAsset,
+          assets,
+          barsByAssetId: trainBarsMap,
+          signals: trainSignals,
+          initialCapital,
+          commissionBps,
+          slippageBps,
+        });
+        const isMetrics = computeMetrics(
+          trainSim.equityCurve,
+          initialCapital,
+          trainSim.trades.length,
+          trainSim.winningTrades,
+          trainSim.avgHoldingDays,
+        );
+
+        const testBarsMap = new Map(barsByAssetId);
+        testBarsMap.set(primaryAsset.id, testBars);
+        const testSignals = strategyDef.generateSignals(
+          {
+            bars: testBars,
+            assetId: primaryAsset.id,
+            assetSymbol: primaryAsset.symbol,
+            initialCapital,
+            extraBarsByAssetId: testBarsMap,
+          },
+          config,
+        );
+        const testStart = testBars[0]?.date ?? "";
+        const filteredTestSignals = testSignals.filter((s) => s.date >= testStart);
+        const testSim = runSimulation({
+          primaryAsset,
+          assets,
+          barsByAssetId: testBarsMap,
+          signals: filteredTestSignals,
+          initialCapital,
+          commissionBps,
+          slippageBps,
+        });
+        const oosFoldMetrics = computeMetrics(
+          testSim.equityCurve,
+          initialCapital,
+          testSim.trades.length,
+          testSim.winningTrades,
+          testSim.avgHoldingDays,
+        );
+
+        return { inSample: isMetrics, outOfSample: oosFoldMetrics };
+      },
+    });
+  }
+
   const metricsPayload = {
     ...metrics,
     outOfSample: oosMetrics,
     outOfSamplePassed,
+    ...(walkForwardPayload ? { walkForward: walkForwardPayload } : {}),
   };
 
   const benchmark = runBuyAndHoldBenchmark(

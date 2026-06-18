@@ -127,9 +127,11 @@ model UserSettings {
   assetPumpLookbackDays  Int           @default(7)
   maxAssetVolatilityPct  Float         @default(80)
   revengeTradingLossPct  Float         @default(1)
-  experimentalCapital    Float         @default(0)
-  experimentalCashBalance Float        @default(0)
-  updatedAt              DateTime      @updatedAt
+  experimentalCapital           Float         @default(0)
+  experimentalCashBalance       Float         @default(0)
+  rejectedOrderCooldownMinutes  Int           @default(15)
+  rejectAveragingDown           Boolean       @default(false)
+  updatedAt                     DateTime      @updatedAt
 }
 
 model Asset {
@@ -142,12 +144,26 @@ model Asset {
   providerSymbol String?
   createdAt      DateTime  @default(now())
 
-  positions      Position[]
-  priceSnapshots PriceSnapshot[]
-  orderIntents   OrderIntent[]
-  backtestRuns   BacktestRun[]
-  paperSignals   PaperSignal[]
+  positions         Position[]
+  priceSnapshots    PriceSnapshot[]
+  historicalPrices  HistoricalPrice[]
+  orderIntents      OrderIntent[]
+  backtestRuns      BacktestRun[]
+  paperSignals      PaperSignal[]
   primaryStrategies Strategy[] @relation("StrategyPrimaryAsset")
+}
+
+model HistoricalPrice {
+  id        String   @id @default(cuid())
+  assetId   String
+  priceDate String
+  close     Float
+  source    String   @default("import")
+  createdAt DateTime @default(now())
+  asset     Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@unique([assetId, priceDate])
+  @@index([assetId])
 }
 
 model Position {

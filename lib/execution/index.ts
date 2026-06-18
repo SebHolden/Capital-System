@@ -1,5 +1,7 @@
 import type { ExecutionMode } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { getBroker } from "@/lib/brokers";
+import type { ExecutionResult } from "@/lib/brokers/types";
 import { prisma } from "@/lib/db";
 import { getPositionsWithMarketPrices } from "@/lib/portfolio";
 import { effectivePrice, resolvePrice } from "@/lib/prices";
@@ -13,9 +15,17 @@ import {
 import {
   assertIdempotencyKey,
   findExistingExecution,
+  IdempotencyKeyError,
 } from "./idempotency";
+import {
+  assertLiveExecutionAllowed,
+  LiveLimitError,
+  LiveNotEnabledError,
+  LivePassphraseError,
+  LivePrerequisiteError,
+} from "./liveGate";
 import { checkExecutionRateLimit } from "./rateLimit";
-import { assertLiveExecutionAllowed } from "./liveGate";
+import { rejectOrderAttempt, type RejectOrderAttemptParams } from "./rejectOrder";
 
 export {
   LiveNotEnabledError,
@@ -44,6 +54,7 @@ export interface ExecuteOrderInput extends SimulateOrderInput {
 export interface ExecutionResponse {
   orderIntentId?: string;
   idempotentReplay?: boolean;
+  executionIncomplete?: boolean;
   riskDecision: {
     level: string;
     reasons: string[];
@@ -206,6 +217,239 @@ function formatRiskResponse(
   };
 }
 
+function isUniqueConstraintError(error: unknown): boolean {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === "P2002"
+  );
+}
+
+function buildRiskDecisionPayload(
+  finalAssessment: RiskAssessment,
+  journalValidation?: ReturnType<typeof validateJournalForOrder>,
+): ExecutionResponse["riskDecision"] {
+  return {
+    level: finalAssessment.level,
+    reasons: finalAssessment.reasons,
+    warnings: finalAssessment.warnings,
+    blocked: finalAssessment.blocked,
+    allowedAmount: finalAssessment.allowedAmount,
+    journalQualityScore: journalValidation?.qualityScore,
+    journalLevel: journalValidation?.level,
+    journalWarnings: journalValidation?.warnings,
+  };
+}
+
+async function createOrderIntentWithRisk(params: {
+  input: ExecuteOrderInput;
+  limitPrice: number;
+  mode: ExecutionMode;
+  finalAssessment: RiskAssessment;
+  orderAmount: number;
+}) {
+  const isRiskBlocked =
+    params.finalAssessment.blocked ||
+    params.finalAssessment.level === "RED" ||
+    params.finalAssessment.level === "BLACK";
+
+  return prisma.$transaction(async (tx) => {
+    const orderIntent = await tx.orderIntent.create({
+      data: {
+        assetId: params.input.assetId,
+        journalId: params.input.journalId,
+        side: params.input.side,
+        quantity: params.input.quantity,
+        limitPrice: params.limitPrice,
+        status: isRiskBlocked ? "REJECTED" : "PENDING",
+        idempotencyKey: params.input.idempotencyKey,
+        executionMode: params.mode,
+      },
+    });
+
+    await tx.riskDecision.create({
+      data: {
+        orderIntentId: orderIntent.id,
+        level: params.finalAssessment.level,
+        reasons: JSON.stringify({
+          reasons: params.finalAssessment.reasons,
+          warnings: params.finalAssessment.warnings,
+          allowedAmount: params.finalAssessment.allowedAmount,
+        }),
+        blocked: params.finalAssessment.blocked,
+      },
+    });
+
+    await writeAuditLog(
+      "RISK_DECISION",
+      "RiskDecision",
+      {
+        orderIntentId: orderIntent.id,
+        level: params.finalAssessment.level,
+        blocked: params.finalAssessment.blocked,
+        reasons: params.finalAssessment.reasons,
+        allowedAmount: params.finalAssessment.allowedAmount,
+        orderAmount: params.orderAmount,
+      },
+      undefined,
+      tx,
+    );
+
+    return orderIntent;
+  });
+}
+
+async function persistSuccessfulExecution(params: {
+  orderIntentId: string;
+  idempotencyKey: string;
+  mode: ExecutionMode;
+  result: ExecutionResult;
+  input: ExecuteOrderInput;
+  asset: Awaited<ReturnType<typeof buildRiskContext>>["asset"];
+  settings: Awaited<ReturnType<typeof buildRiskContext>>["settings"];
+  costBasisPerUnit?: number;
+  realizedPnl?: number;
+}) {
+  const existingPosition = await prisma.position.findFirst({
+    where: { assetId: params.asset.id },
+  });
+
+  await prisma.$transaction(async (tx) => {
+    await tx.executionLog.create({
+      data: {
+        orderIntentId: params.orderIntentId,
+        mode: params.mode,
+        status: "FILLED",
+        fillPrice: params.result.fillPrice,
+        message: params.result.message,
+        brokerOrderId: params.result.brokerOrderId,
+        idempotencyKey: params.idempotencyKey,
+        costBasisPerUnit: params.costBasisPerUnit,
+        realizedPnl: params.realizedPnl,
+      },
+    });
+
+    await tx.orderIntent.update({
+      where: { id: params.orderIntentId },
+      data: { status: "EXECUTED" },
+    });
+
+    if (params.result.fillPrice) {
+      const fillAmount = params.input.quantity * params.result.fillPrice;
+
+      if (params.input.side === "BUY") {
+        const cashUpdate =
+          params.asset.bucket === "SPECULATIVE"
+            ? { experimentalCashBalance: { decrement: fillAmount } }
+            : { cashBalance: { decrement: fillAmount } };
+
+        await tx.userSettings.update({
+          where: { id: params.settings.id },
+          data: cashUpdate,
+        });
+
+        if (existingPosition) {
+          const newQty = existingPosition.quantity + params.input.quantity;
+          const newAvg =
+            (existingPosition.quantity * existingPosition.avgPrice +
+              params.input.quantity * params.result.fillPrice!) /
+            newQty;
+          await tx.position.update({
+            where: { id: existingPosition.id },
+            data: { quantity: newQty, avgPrice: newAvg },
+          });
+        } else {
+          await tx.position.create({
+            data: {
+              assetId: params.asset.id,
+              quantity: params.input.quantity,
+              avgPrice: params.result.fillPrice,
+              bucket: params.asset.bucket,
+            },
+          });
+        }
+      } else if (existingPosition) {
+        const cashUpdate =
+          existingPosition.bucket === "SPECULATIVE"
+            ? { experimentalCashBalance: { increment: fillAmount } }
+            : { cashBalance: { increment: fillAmount } };
+
+        await tx.userSettings.update({
+          where: { id: params.settings.id },
+          data: cashUpdate,
+        });
+
+        const newQty = existingPosition.quantity - params.input.quantity;
+        if (newQty <= 0) {
+          await tx.position.delete({ where: { id: existingPosition.id } });
+        } else {
+          await tx.position.update({
+            where: { id: existingPosition.id },
+            data: { quantity: newQty },
+          });
+        }
+      }
+    }
+
+    await writeAuditLog(
+      params.mode === "LIVE" ? "LIVE_ORDER_EXECUTED" : "ORDER_EXECUTED",
+      "ExecutionLog",
+      {
+        orderIntentId: params.orderIntentId,
+        mode: params.mode,
+        success: true,
+        message: params.result.message,
+        brokerOrderId: params.result.brokerOrderId,
+        brokerName: params.result.brokerName,
+      },
+      params.orderIntentId,
+      tx,
+    );
+  });
+}
+
+async function finalizeRejectedOrder(
+  params: RejectOrderAttemptParams,
+): Promise<ExecutionResponse> {
+  try {
+    return await rejectOrderAttempt(params);
+  } catch (error) {
+    const persistError =
+      error instanceof Error ? error.message : "Errore persistenza rifiuto ordine.";
+
+    await prisma.orderIntent
+      .update({
+        where: { id: params.orderIntentId },
+        data: { status: "REJECTED" },
+      })
+      .catch(() => undefined);
+
+    await writeAuditLog(
+      "EXECUTION_REJECT_FAILED",
+      "OrderIntent",
+      {
+        orderIntentId: params.orderIntentId,
+        idempotencyKey: params.idempotencyKey,
+        reason: params.reason,
+        auditAction: params.auditAction,
+        persistError,
+        ...params.auditPayload,
+      },
+      params.orderIntentId,
+    );
+
+    return {
+      orderIntentId: params.orderIntentId,
+      riskDecision: params.riskDecision,
+      impact: params.impact,
+      execution: {
+        success: false,
+        fillPrice: null,
+        message: params.reason,
+      },
+    };
+  }
+}
+
 export async function simulateOrder(
   input: SimulateOrderInput,
 ): Promise<ExecutionResponse> {
@@ -257,51 +501,39 @@ export async function executeOrder(
         ? "PAPER"
         : "MOCK";
 
-  const orderIntent = await prisma.orderIntent.create({
-    data: {
-      assetId: input.assetId,
-      journalId: input.journalId,
-      side: input.side,
-      quantity: input.quantity,
+  const riskDecision = buildRiskDecisionPayload(finalAssessment, journalValidation);
+
+  let orderIntent;
+  try {
+    orderIntent = await createOrderIntentWithRisk({
+      input,
       limitPrice,
-      status: finalAssessment.blocked ? "REJECTED" : "PENDING",
-      idempotencyKey: input.idempotencyKey,
-      executionMode: mode,
-    },
-  });
-
-  await prisma.riskDecision.create({
-    data: {
-      orderIntentId: orderIntent.id,
-      level: finalAssessment.level,
-      reasons: JSON.stringify({
-        reasons: finalAssessment.reasons,
-        warnings: finalAssessment.warnings,
-        allowedAmount: finalAssessment.allowedAmount,
-      }),
-      blocked: finalAssessment.blocked,
-    },
-  });
-
-  await writeAuditLog("RISK_DECISION", "RiskDecision", {
-    orderIntentId: orderIntent.id,
-    level: finalAssessment.level,
-    blocked: finalAssessment.blocked,
-    reasons: finalAssessment.reasons,
-    allowedAmount: finalAssessment.allowedAmount,
-    orderAmount,
-  });
+      mode,
+      finalAssessment,
+      orderAmount,
+    });
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      const replay = await findExistingExecution(input.idempotencyKey);
+      if (replay) {
+        await writeAuditLog("ORDER_IDEMPOTENT_REPLAY", "OrderIntent", {
+          idempotencyKey: input.idempotencyKey,
+          orderIntentId: replay.orderIntentId,
+        });
+        return replay;
+      }
+      throw new IdempotencyKeyError(
+        "idempotencyKey già utilizzata: attendi il completamento o usa una nuova chiave.",
+      );
+    }
+    throw error;
+  }
 
   if (
     finalAssessment.blocked ||
     finalAssessment.level === "RED" ||
     finalAssessment.level === "BLACK"
   ) {
-    await prisma.orderIntent.update({
-      where: { id: orderIntent.id },
-      data: { status: "REJECTED" },
-    });
-
     const formatted = formatRiskResponse(
       finalAssessment,
       impact,
@@ -314,29 +546,94 @@ export async function executeOrder(
         ...formatted.riskDecision,
         blocked: true,
       },
+      execution: {
+        success: false,
+        fillPrice: null,
+        message: "Rifiutato dal risk gate.",
+      },
     };
   }
 
   if (mode === "LIVE") {
-    await assertLiveExecutionAllowed(
-      {
-        confirmLive: input.confirmLive,
-        livePassphrase: input.livePassphrase,
-      },
-      settings,
-      orderAmount,
-    );
+    try {
+      await assertLiveExecutionAllowed(
+        {
+          confirmLive: input.confirmLive,
+          livePassphrase: input.livePassphrase,
+        },
+        settings,
+        orderAmount,
+      );
+    } catch (error) {
+      let auditAction = "LIVE_GATE_REJECTED";
+      const auditPayload: Record<string, unknown> = {};
+
+      if (error instanceof LivePassphraseError) {
+        auditAction = "LIVE_PASSPHRASE_REJECTED";
+      } else if (error instanceof LivePrerequisiteError) {
+        auditPayload.reasons = error.reasons;
+      } else if (error instanceof LiveLimitError) {
+        auditAction = "LIVE_LIMIT_REJECTED";
+      } else if (error instanceof LiveNotEnabledError) {
+        auditAction = "LIVE_NOT_ENABLED_REJECTED";
+      }
+
+      const reason =
+        error instanceof Error ? error.message : "Live gate fallito.";
+
+      return finalizeRejectedOrder({
+        orderIntentId: orderIntent.id,
+        idempotencyKey: input.idempotencyKey,
+        mode,
+        reason,
+        auditAction,
+        riskDecision,
+        impact,
+        auditPayload,
+      });
+    }
   }
 
   const broker = getBroker(mode);
-  const result = await broker.placeOrder({
-    assetId: asset.id,
-    symbol: asset.symbol,
-    assetType: asset.assetType,
-    side: input.side,
-    quantity: input.quantity,
-    limitPrice,
-  });
+  let result: ExecutionResult;
+  try {
+    result = await broker.placeOrder({
+      assetId: asset.id,
+      symbol: asset.symbol,
+      assetType: asset.assetType,
+      side: input.side,
+      quantity: input.quantity,
+      limitPrice,
+    });
+  } catch (error) {
+    const reason =
+      error instanceof Error ? error.message : "Errore broker imprevisto.";
+    return finalizeRejectedOrder({
+      orderIntentId: orderIntent.id,
+      idempotencyKey: input.idempotencyKey,
+      mode,
+      reason,
+      auditAction: "BROKER_ERROR",
+      riskDecision,
+      impact,
+    });
+  }
+
+  if (!result.success) {
+    return finalizeRejectedOrder({
+      orderIntentId: orderIntent.id,
+      idempotencyKey: input.idempotencyKey,
+      mode,
+      reason: result.message,
+      auditAction: mode === "LIVE" ? "LIVE_ORDER_REJECTED" : "ORDER_REJECTED",
+      riskDecision,
+      impact,
+      auditPayload: {
+        brokerOrderId: result.brokerOrderId,
+        brokerName: result.brokerName,
+      },
+    });
+  }
 
   const existingPosition = await prisma.position.findFirst({
     where: { assetId: asset.id },
@@ -347,7 +644,6 @@ export async function executeOrder(
   if (
     input.side === "SELL" &&
     existingPosition &&
-    result.success &&
     result.fillPrice
   ) {
     costBasisPerUnit = existingPosition.avgPrice;
@@ -355,112 +651,52 @@ export async function executeOrder(
       (result.fillPrice - existingPosition.avgPrice) * input.quantity;
   }
 
-  await prisma.executionLog.create({
-    data: {
+  try {
+    await persistSuccessfulExecution({
       orderIntentId: orderIntent.id,
-      mode,
-      status: result.success ? "FILLED" : "REJECTED",
-      fillPrice: result.fillPrice,
-      message: result.message,
-      brokerOrderId: result.brokerOrderId,
       idempotencyKey: input.idempotencyKey,
+      mode,
+      result,
+      input,
+      asset,
+      settings,
       costBasisPerUnit,
       realizedPnl,
-    },
-  });
-
-  await prisma.orderIntent.update({
-    where: { id: orderIntent.id },
-    data: { status: result.success ? "EXECUTED" : "REJECTED" },
-  });
-
-  if (result.success && result.fillPrice) {
-    const orderAmount = input.quantity * result.fillPrice;
-
-    if (input.side === "BUY") {
-      const cashUpdate =
-        asset.bucket === "SPECULATIVE"
-          ? { experimentalCashBalance: { decrement: orderAmount } }
-          : { cashBalance: { decrement: orderAmount } };
-
-      await prisma.userSettings.update({
-        where: { id: settings.id },
-        data: cashUpdate,
-      });
-
-      if (existingPosition) {
-        const newQty = existingPosition.quantity + input.quantity;
-        const newAvg =
-          (existingPosition.quantity * existingPosition.avgPrice +
-            input.quantity * result.fillPrice) /
-          newQty;
-        await prisma.position.update({
-          where: { id: existingPosition.id },
-          data: { quantity: newQty, avgPrice: newAvg },
-        });
-      } else {
-        await prisma.position.create({
-          data: {
-            assetId: asset.id,
-            quantity: input.quantity,
-            avgPrice: result.fillPrice,
-            bucket: asset.bucket,
-          },
-        });
-      }
-    } else if (existingPosition) {
-      const cashUpdate =
-        existingPosition.bucket === "SPECULATIVE"
-          ? { experimentalCashBalance: { increment: orderAmount } }
-          : { cashBalance: { increment: orderAmount } };
-
-      await prisma.userSettings.update({
-        where: { id: settings.id },
-        data: cashUpdate,
-      });
-
-      const newQty = existingPosition.quantity - input.quantity;
-      if (newQty <= 0) {
-        await prisma.position.delete({ where: { id: existingPosition.id } });
-      } else {
-        await prisma.position.update({
-          where: { id: existingPosition.id },
-          data: { quantity: newQty },
-        });
-      }
-    }
-
-    const updatedSettings = await getUserSettings();
-    const updatedPositions = await getPositionsWithMarketPrices();
-    const newTotalValue =
-      updatedSettings.cashBalance +
-      updatedSettings.experimentalCashBalance +
-      updatedPositions.reduce((sum, p) => sum + p.currentValue, 0);
-    await syncRiskBaselines(updatedSettings, newTotalValue);
+    });
+  } catch (error) {
+    const reason =
+      error instanceof Error
+        ? error.message
+        : "Errore persistenza esecuzione ordine.";
+    return finalizeRejectedOrder({
+      orderIntentId: orderIntent.id,
+      idempotencyKey: input.idempotencyKey,
+      mode,
+      reason,
+      auditAction: "EXECUTION_FAILED",
+      riskDecision,
+      impact,
+      auditPayload: {
+        brokerOrderId: result.brokerOrderId,
+        brokerName: result.brokerName,
+        note: "Broker ha risposto success ma persistenza DB fallita.",
+      },
+    });
   }
 
-  await writeAuditLog(
-    mode === "LIVE" && result.success
-      ? "LIVE_ORDER_EXECUTED"
-      : mode === "LIVE"
-        ? "LIVE_ORDER_REJECTED"
-        : "ORDER_EXECUTED",
-    "ExecutionLog",
-    {
-      orderIntentId: orderIntent.id,
-      mode,
-      success: result.success,
-      message: result.message,
-      brokerOrderId: result.brokerOrderId,
-      brokerName: result.brokerName,
-    },
-  );
+  const updatedSettings = await getUserSettings();
+  const updatedPositions = await getPositionsWithMarketPrices();
+  const newTotalValue =
+    updatedSettings.cashBalance +
+    updatedSettings.experimentalCashBalance +
+    updatedPositions.reduce((sum, p) => sum + p.currentValue, 0);
+  await syncRiskBaselines(updatedSettings, newTotalValue);
 
   return {
     orderIntentId: orderIntent.id,
     ...formatRiskResponse(finalAssessment, impact, journalValidation),
     execution: {
-      success: result.success,
+      success: true,
       fillPrice: result.fillPrice,
       message: result.message,
       brokerOrderId: result.brokerOrderId,

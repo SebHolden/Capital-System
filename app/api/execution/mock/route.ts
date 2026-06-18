@@ -10,9 +10,12 @@ import { IdempotencyKeyError } from "@/lib/execution/idempotency";
 import { ExecutionRateLimitError } from "@/lib/execution/rateLimit";
 import { executeOrderSchema } from "@/lib/execution/schemas";
 
+import { mapMutatingSecurityError, verifyMutatingRequest } from "@/lib/security";
+
 /** @deprecated Usa POST /api/execution — wrapper legacy per compatibilità MOCK. */
 export async function POST(request: Request) {
   try {
+    verifyMutatingRequest(request);
     const body = await request.json();
     const parsed = executeOrderSchema.safeParse({
       ...body,
@@ -78,6 +81,9 @@ export async function POST(request: Request) {
         { status: 429 },
       );
     }
+
+    const securityError = mapMutatingSecurityError(error);
+    if (securityError) return securityError;
 
     console.error(error);
     return NextResponse.json(

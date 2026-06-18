@@ -4,14 +4,14 @@ import {
   PaperActivationError,
 } from "@/lib/paper-signals";
 import { activatePaperSchema } from "@/lib/paper-signals/schemas";
-import { CsrfError, verifyCsrfRequest } from "@/lib/security";
+import { CsrfError, verifyMutatingRequest } from "@/lib/security";
 
 export async function POST(
   request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    verifyCsrfRequest(request);
+    verifyMutatingRequest(request);
     const { id } = await context.params;
     const body = await request.json().catch(() => ({}));
     const parsed = activatePaperSchema.safeParse(body);

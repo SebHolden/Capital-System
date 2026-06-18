@@ -49,6 +49,13 @@ export const coreSatelliteConfigSchema = z.object({
   satelliteAmountEur: z.number().positive().max(100_000),
 });
 
+export const walkForwardConfigSchema = z.object({
+  enabled: z.boolean(),
+  trainBars: z.number().int().min(10).max(2000),
+  testBars: z.number().int().min(5).max(1000),
+  stepBars: z.number().int().min(1).max(1000),
+});
+
 export const runBacktestSchema = z.object({
   strategyType: strategyTypeEnum,
   assetId: z.string().min(1),
@@ -59,6 +66,7 @@ export const runBacktestSchema = z.object({
   slippageBps: z.number().min(0).max(500).optional(),
   config: z.record(z.unknown()).optional(),
   rebalanceAssetIds: z.array(z.string().min(1)).max(3).optional(),
+  walkForward: walkForwardConfigSchema.optional(),
 });
 
 export function parseStrategyConfig(

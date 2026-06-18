@@ -28,8 +28,10 @@ interface PositionRow {
 
 export function PortfolioClient({
   initialPositions,
+  realizedPnlTotal = 0,
 }: {
   initialPositions: PositionRow[];
+  realizedPnlTotal?: number;
 }) {
   const router = useRouter();
   const [positions, setPositions] = useState(initialPositions);
@@ -189,7 +191,16 @@ export function PortfolioClient({
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-white">Portfolio</h2>
-          <p className="text-sm text-slate-400">Gestione posizioni</p>
+          <p className="text-sm text-slate-400">
+            Gestione posizioni · PnL realizzato cumulato:{" "}
+            <span
+              className={
+                realizedPnlTotal >= 0 ? "text-green-400" : "text-red-400"
+              }
+            >
+              {formatCurrency(realizedPnlTotal)}
+            </span>
+          </p>
         </div>
         <div className="flex flex-wrap gap-3">
           <RefreshPricesButton />

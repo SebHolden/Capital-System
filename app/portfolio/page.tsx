@@ -6,6 +6,7 @@ export default async function PortfolioPage() {
 
   return (
     <PortfolioClient
+      realizedPnlTotal={summary.realizedPnl.total}
       initialPositions={summary.positions.map((p) => ({
         id: p.id,
         quantity: p.quantity,

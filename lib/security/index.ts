@@ -1,6 +1,14 @@
 import { PrismaClient, TradeJournal, UserSettings, type RiskLevel } from "@prisma/client";
+import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { scoreJournal, toJournalInput } from "@/lib/journal";
+import { CsrfError, verifyCsrfRequest } from "./csrf";
+import { OriginError, verifyRequestOrigin } from "./origin";
+
+export type DbClient = PrismaClient | Omit<
+  PrismaClient,
+  "$connect" | "$disconnect" | "$on" | "$transaction" | "$extends"
+>;
 
 const SETTINGS_ID = "default";
 
@@ -160,7 +168,7 @@ export async function writeAuditLog(
   entity: string,
   payload: Record<string, unknown>,
   entityId?: string,
-  client: PrismaClient = prisma,
+  client: DbClient = prisma,
 ): Promise<void> {
   await client.auditLog.create({
     data: {
@@ -234,3 +242,26 @@ export {
   CSRF_COOKIE_NAME,
   CSRF_HEADER_NAME,
 } from "./csrf";
+
+export { OriginError, verifyRequestOrigin } from "./origin";
+
+export function verifyMutatingRequest(request: Request): void {
+  verifyCsrfRequest(request);
+  verifyRequestOrigin(request);
+}
+
+export function mapMutatingSecurityError(error: unknown): NextResponse | null {
+  if (error instanceof CsrfError) {
+    return NextResponse.json(
+      { error: error.message, code: "CSRF_INVALID" },
+      { status: 403 },
+    );
+  }
+  if (error instanceof OriginError) {
+    return NextResponse.json(
+      { error: error.message, code: "ORIGIN_INVALID" },
+      { status: 403 },
+    );
+  }
+  return null;
+}

@@ -68,6 +68,7 @@ export async function buildDailyReport(dateKey?: string): Promise<DailyReport> {
       monthlyPnlAmount: summary.riskMetrics.monthly.pnlAmount,
       monthlyPnlPct: summary.riskMetrics.monthly.pnlPct,
       drawdownPct: summary.riskMetrics.drawdown.drawdownPct,
+      realizedPnlTotal: summary.realizedPnl.total,
     },
     risk: {
       level: summary.risk.level,

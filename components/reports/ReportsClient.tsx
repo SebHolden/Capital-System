@@ -281,6 +281,41 @@ export function ReportsClient({
               </ul>
             </Card>
           )}
+
+          <Card>
+            <CardTitle>Intent vs outcome</CardTitle>
+            {weekly.intentOutcomes.length === 0 ? (
+              <p className="mt-2 text-sm text-slate-500">
+                Nessun ordine eseguito con journal in questa settimana.
+              </p>
+            ) : (
+              <ul className="mt-3 space-y-2 text-sm">
+                {weekly.intentOutcomes.map((row) => (
+                  <li
+                    key={row.orderIntentId}
+                    className={`rounded-lg p-3 ${
+                      row.withinLossLimit === false
+                        ? "bg-red-950/40 text-red-200"
+                        : "bg-slate-900/60 text-slate-300"
+                    }`}
+                  >
+                    <p className="font-medium text-white">
+                      {row.side} {row.symbol} · {row.journalTitle}
+                    </p>
+                    <p className="mt-1 text-xs opacity-90">
+                      PnL:{" "}
+                      {row.pnlAmount !== null
+                        ? formatCurrency(row.pnlAmount)
+                        : "n/d"}{" "}
+                      · Max loss accettabile:{" "}
+                      {formatCurrency(row.maxAcceptableLoss)}
+                    </p>
+                    <p className="mt-1 text-xs opacity-80">{row.note}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
         </>
       )}
 

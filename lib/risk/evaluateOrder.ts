@@ -1,5 +1,10 @@
 import type { RiskAssessment } from "./types";
 import type { OrderContext } from "./types";
+import {
+  evaluateAllocationCheck,
+  evaluateCashReserveCheck,
+  evaluateOrderSizeCheck,
+} from "./checks";
 import { evaluateDrawdown } from "./drawdown";
 import { evaluateLossLimits } from "./lossLimits";
 
@@ -58,56 +63,38 @@ export function evaluateOrder(context: OrderContext): RiskAssessment {
     allowedAmount = 0;
   }
 
+  const orderSizeCheck = evaluateOrderSizeCheck(context);
+  reasons.push(...orderSizeCheck.reasons);
   if (context.side === "BUY" && context.orderAmount > context.maxOrderAmount) {
-    reasons.push(
-      `Importo ordine (€${context.orderAmount.toFixed(2)}) supera il limite (€${context.maxOrderAmount.toFixed(2)}).`,
-    );
     allowedAmount = Math.min(allowedAmount, context.maxOrderAmount);
   }
-
   if (context.dailyOrderCount >= context.maxDailyOrders) {
-    reasons.push(
-      `Limite ordini giornalieri raggiunto (${context.maxDailyOrders}).`,
-    );
     allowedAmount = 0;
   }
 
+  const cashCheck = evaluateCashReserveCheck(context);
+  reasons.push(...cashCheck.reasons);
   if (context.side === "BUY" && context.orderAmount > context.cashBalance) {
-    reasons.push(
-      `Liquidità insufficiente: disponibile €${context.cashBalance.toFixed(2)}, richiesto €${context.orderAmount.toFixed(2)}.`,
-    );
     allowedAmount = Math.min(allowedAmount, context.cashBalance);
   }
-
   if (
     context.side === "BUY" &&
     context.bucket === "SPECULATIVE" &&
     context.orderAmount > context.experimentalCashBalance
   ) {
-    reasons.push(
-      `Liquidità sperimentale insufficiente: disponibile €${context.experimentalCashBalance.toFixed(2)}, richiesto €${context.orderAmount.toFixed(2)}.`,
-    );
     allowedAmount = Math.min(allowedAmount, context.experimentalCashBalance);
   }
-
   if (
     context.side === "BUY" &&
     context.bucket === "SPECULATIVE" &&
     context.experimentalCapital > 0 &&
     context.currentExperimentalBudgetTotal > context.experimentalCapital
   ) {
-    reasons.push(
-      `Budget capitale sperimentale (€${context.currentExperimentalBudgetTotal.toFixed(2)}) supera il limite (€${context.experimentalCapital.toFixed(2)}).`,
-    );
     allowedAmount = 0;
   }
-
   if (context.side === "BUY" && context.bucket !== "SPECULATIVE") {
     const cashAfter = context.cashBalance - context.orderAmount;
     if (cashAfter < context.minCashReserve) {
-      reasons.push(
-        `Dopo l'acquisto la liquidità (€${cashAfter.toFixed(2)}) scenderebbe sotto la riserva minima (€${context.minCashReserve.toFixed(2)}).`,
-      );
       allowedAmount = Math.min(
         allowedAmount,
         Math.max(0, context.cashBalance - context.minCashReserve),
@@ -115,23 +102,8 @@ export function evaluateOrder(context: OrderContext): RiskAssessment {
     }
   }
 
-  if (
-    context.assetType === "CRYPTO" &&
-    context.projectedCryptoPct > context.maxCryptoPct
-  ) {
-    reasons.push(
-      `Allocazione crypto (${context.projectedCryptoPct.toFixed(1)}%) supera il limite (${context.maxCryptoPct}%).`,
-    );
-  }
-
-  if (
-    context.bucket === "SPECULATIVE" &&
-    context.projectedExperimentalPct > context.maxExperimentalPct
-  ) {
-    reasons.push(
-      `Allocazione experimental (${context.projectedExperimentalPct.toFixed(1)}%) supera il limite (${context.maxExperimentalPct}%).`,
-    );
-  }
+  const allocationCheck = evaluateAllocationCheck(context);
+  reasons.push(...allocationCheck.reasons);
 
   const projectedPositionValue =
     context.side === "BUY"
@@ -145,27 +117,6 @@ export function evaluateOrder(context: OrderContext): RiskAssessment {
 
   const projectedPositionPct =
     totalPortfolio > 0 ? (projectedPositionValue / totalPortfolio) * 100 : 0;
-
-  if (projectedPositionPct > context.maxPositionPct) {
-    reasons.push(
-      `Esposizione posizione (${projectedPositionPct.toFixed(1)}%) supera il limite (${context.maxPositionPct}%).`,
-    );
-  }
-
-  if (context.projectedBucketPct > context.maxBucketPct) {
-    reasons.push(
-      `Allocazione bucket (${context.projectedBucketPct.toFixed(1)}%) supera il limite (${context.maxBucketPct}%).`,
-    );
-  }
-
-  if (
-    context.assetType === "CRYPTO" &&
-    context.projectedSingleCryptoPct > context.maxSingleCryptoPct
-  ) {
-    reasons.push(
-      `Allocazione singola crypto (${context.projectedSingleCryptoPct.toFixed(1)}%) supera il limite (${context.maxSingleCryptoPct}%).`,
-    );
-  }
 
   if (context.orderUsesLeverage && !context.leverageAllowed) {
     reasons.push("Leva finanziaria non consentita dalle impostazioni.");
@@ -204,7 +155,11 @@ export function evaluateOrder(context: OrderContext): RiskAssessment {
       r.includes("revenge trading") ||
       r.includes("forte rialzo") ||
       r.includes("Volatilità asset elevata") ||
-      r.includes("singola crypto"),
+      r.includes("singola crypto") ||
+      r.includes("Prezzo stale") ||
+      r.includes("Prezzo mancante") ||
+      r.includes("Cooldown attivo") ||
+      r.includes("Averaging down"),
   );
 
   allowedAmount = Math.max(0, Math.min(allowedAmount, context.orderAmount));

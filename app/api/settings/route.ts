@@ -5,8 +5,8 @@ import {
   getUserSettings,
   isLiveTradingEnabled,
   writeAuditLog,
-  CsrfError,
-  verifyCsrfRequest,
+  mapMutatingSecurityError,
+  verifyMutatingRequest,
 } from "@/lib/security";
 
 const updateSettingsSchema = z
@@ -36,6 +36,8 @@ const updateSettingsSchema = z
     revengeTradingLossPct: z.number().min(0.1).max(20).optional(),
     experimentalCapital: z.number().min(0).optional(),
     experimentalCashBalance: z.number().min(0).optional(),
+    rejectedOrderCooldownMinutes: z.number().int().min(0).max(120).optional(),
+    rejectAveragingDown: z.boolean().optional(),
     tradingWindowEnabled: z.boolean().optional(),
     tradingStartHour: z.number().int().min(0).max(23).optional(),
     tradingEndHour: z.number().int().min(1).max(24).optional(),
@@ -75,7 +77,7 @@ export async function GET() {
 
 export async function PATCH(request: Request) {
   try {
-    verifyCsrfRequest(request);
+    verifyMutatingRequest(request);
     const body = await request.json();
     const parsed = updateSettingsSchema.safeParse(body);
 
@@ -108,12 +110,8 @@ export async function PATCH(request: Request) {
       liveTradingEnabled: isLiveTradingEnabled(),
     });
   } catch (error) {
-    if (error instanceof CsrfError) {
-      return NextResponse.json(
-        { error: error.message, code: "CSRF_INVALID" },
-        { status: 403 },
-      );
-    }
+    const securityError = mapMutatingSecurityError(error);
+    if (securityError) return securityError;
     console.error(error);
     return NextResponse.json(
       { error: "Errore nell'aggiornamento delle impostazioni.", code: "SETTINGS_UPDATE_ERROR" },

@@ -1,6 +1,13 @@
 import type { AssetType, Bucket, UserSettings } from "@prisma/client";
 import type { TradeJournal } from "@prisma/client";
+import { prisma } from "@/lib/db";
+import { resolvePrice } from "@/lib/prices/resolve";
 import { validateJournalForOrder } from "@/lib/security";
+import {
+  evaluateAveragingDownCheck,
+  evaluateRejectedCooldownCheck,
+  evaluateStalePriceCheck,
+} from "./checks";
 import type { RiskBaselineMetrics } from "./baselines";
 import { evaluateConcentration } from "./concentration";
 import { evaluatePortfolio } from "./evaluatePortfolio";
@@ -43,6 +50,43 @@ export async function evaluateRiskGate(input: {
       level: "BLACK",
       reasons: ["Kill switch attivo: tutte le operazioni sono bloccate."],
       warnings: [],
+      blocked: true,
+      allowedAmount: 0,
+    };
+  }
+
+  const asset = await prisma.asset.findUniqueOrThrow({
+    where: { id: input.order.assetId },
+  });
+  const resolvedPrice = await resolvePrice(asset);
+  const cooldownCheck = await evaluateRejectedCooldownCheck(
+    input.settings.rejectedOrderCooldownMinutes,
+  );
+  const staleCheck = evaluateStalePriceCheck({
+    side: input.order.side,
+    priceStatus: resolvedPrice.status,
+    symbol: input.order.symbol,
+  });
+  const existingPosition = input.positions.find(
+    (p) => p.assetId === input.order.assetId,
+  );
+  const averagingCheck = evaluateAveragingDownCheck({
+    side: input.order.side,
+    rejectAveragingDown: input.settings.rejectAveragingDown,
+    limitPrice: input.order.limitPrice,
+    positionAvgPrice: existingPosition?.avgPrice,
+    hasPosition: (existingPosition?.quantity ?? 0) > 0,
+  });
+
+  if (staleCheck.block || cooldownCheck.block || averagingCheck.block) {
+    return {
+      level: "RED",
+      reasons: [
+        ...staleCheck.reasons,
+        ...cooldownCheck.reasons,
+        ...averagingCheck.reasons,
+      ],
+      warnings: [...staleCheck.warnings, ...cooldownCheck.warnings],
       blocked: true,
       allowedAmount: 0,
     };

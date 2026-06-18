@@ -34,6 +34,10 @@ interface Settings {
   tradingStartHour: number;
   tradingEndHour: number;
   tradingTimezone: string;
+  experimentalCapital: number;
+  experimentalCashBalance: number;
+  rejectedOrderCooldownMinutes: number;
+  rejectAveragingDown: boolean;
 }
 
 interface ChecklistItem {
@@ -95,6 +99,12 @@ export function SettingsClient({
     tradingStartHour: String(settings.tradingStartHour),
     tradingEndHour: String(settings.tradingEndHour),
     tradingTimezone: settings.tradingTimezone,
+    experimentalCapital: String(settings.experimentalCapital),
+    experimentalCashBalance: String(settings.experimentalCashBalance),
+    rejectedOrderCooldownMinutes: String(
+      settings.rejectedOrderCooldownMinutes ?? 15,
+    ),
+    rejectAveragingDown: settings.rejectAveragingDown ?? false,
     executionMode: settings.executionMode,
   });
 
@@ -167,6 +177,13 @@ export function SettingsClient({
           tradingStartHour: parseInt(form.tradingStartHour, 10),
           tradingEndHour: parseInt(form.tradingEndHour, 10),
           tradingTimezone: form.tradingTimezone,
+          experimentalCapital: parseFloat(form.experimentalCapital),
+          experimentalCashBalance: parseFloat(form.experimentalCashBalance),
+          rejectedOrderCooldownMinutes: parseInt(
+            form.rejectedOrderCooldownMinutes,
+            10,
+          ),
+          rejectAveragingDown: form.rejectAveragingDown,
           executionMode: form.executionMode,
         }),
       });
@@ -353,6 +370,29 @@ export function SettingsClient({
               />
             </div>
             <div>
+              <Label>Budget capitale sperimentale (€)</Label>
+              <Input
+                type="number"
+                value={form.experimentalCapital}
+                onChange={(e) =>
+                  setForm({ ...form, experimentalCapital: e.target.value })
+                }
+              />
+            </div>
+            <div>
+              <Label>Liquidità sperimentale (€)</Label>
+              <Input
+                type="number"
+                value={form.experimentalCashBalance}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    experimentalCashBalance: e.target.value,
+                  })
+                }
+              />
+            </div>
+            <div>
               <Label>Max ordini giornalieri</Label>
               <Input
                 type="number"
@@ -361,6 +401,34 @@ export function SettingsClient({
                   setForm({ ...form, maxDailyOrders: e.target.value })
                 }
               />
+            </div>
+            <div>
+              <Label>Cooldown post-rifiuto (min)</Label>
+              <Input
+                type="number"
+                value={form.rejectedOrderCooldownMinutes}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    rejectedOrderCooldownMinutes: e.target.value,
+                  })
+                }
+              />
+            </div>
+            <div className="flex items-end">
+              <label className="flex items-center gap-2 text-sm text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={form.rejectAveragingDown}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      rejectAveragingDown: e.target.checked,
+                    })
+                  }
+                />
+                Blocca averaging down
+              </label>
             </div>
             <div>
               <Label>Max importo ordine (€)</Label>
