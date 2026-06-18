@@ -337,6 +337,23 @@ export async function executeOrder(
     limitPrice,
   });
 
+  const existingPosition = await prisma.position.findFirst({
+    where: { assetId: asset.id },
+  });
+
+  let costBasisPerUnit: number | undefined;
+  let realizedPnl: number | undefined;
+  if (
+    input.side === "SELL" &&
+    existingPosition &&
+    result.success &&
+    result.fillPrice
+  ) {
+    costBasisPerUnit = existingPosition.avgPrice;
+    realizedPnl =
+      (result.fillPrice - existingPosition.avgPrice) * input.quantity;
+  }
+
   await prisma.executionLog.create({
     data: {
       orderIntentId: orderIntent.id,
@@ -346,6 +363,8 @@ export async function executeOrder(
       message: result.message,
       brokerOrderId: result.brokerOrderId,
       idempotencyKey: input.idempotencyKey,
+      costBasisPerUnit,
+      realizedPnl,
     },
   });
 
@@ -356,14 +375,16 @@ export async function executeOrder(
 
   if (result.success && result.fillPrice) {
     const orderAmount = input.quantity * result.fillPrice;
-    const existingPosition = await prisma.position.findFirst({
-      where: { assetId: asset.id },
-    });
 
     if (input.side === "BUY") {
+      const cashUpdate =
+        asset.bucket === "SPECULATIVE"
+          ? { experimentalCashBalance: { decrement: orderAmount } }
+          : { cashBalance: { decrement: orderAmount } };
+
       await prisma.userSettings.update({
         where: { id: settings.id },
-        data: { cashBalance: { decrement: orderAmount } },
+        data: cashUpdate,
       });
 
       if (existingPosition) {
@@ -387,9 +408,14 @@ export async function executeOrder(
         });
       }
     } else if (existingPosition) {
+      const cashUpdate =
+        existingPosition.bucket === "SPECULATIVE"
+          ? { experimentalCashBalance: { increment: orderAmount } }
+          : { cashBalance: { increment: orderAmount } };
+
       await prisma.userSettings.update({
         where: { id: settings.id },
-        data: { cashBalance: { increment: orderAmount } },
+        data: cashUpdate,
       });
 
       const newQty = existingPosition.quantity - input.quantity;
@@ -407,6 +433,7 @@ export async function executeOrder(
     const updatedPositions = await getPositionsWithMarketPrices();
     const newTotalValue =
       updatedSettings.cashBalance +
+      updatedSettings.experimentalCashBalance +
       updatedPositions.reduce((sum, p) => sum + p.currentValue, 0);
     await syncRiskBaselines(updatedSettings, newTotalValue);
   }

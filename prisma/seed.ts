@@ -24,7 +24,9 @@ async function main() {
     data: {
       id: "default",
       hypotheticalCapital: 10000,
-      cashBalance: 5500,
+      cashBalance: 5200,
+      experimentalCapital: 1000,
+      experimentalCashBalance: 300,
       executionMode: "MOCK",
       killSwitchActive: false,
       maxPositionPct: 25,
