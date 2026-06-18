@@ -1,9 +1,14 @@
 import { prisma } from "@/lib/db";
 import type { ExecutionResponse } from "./index";
+import { rejectOrderAttempt } from "./rejectOrder";
 
 const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_PENDING_STALE_MS = 120_000;
 
 const KEY_PATTERN = /^[a-zA-Z0-9_-]{8,64}$/;
+
+const STALE_PENDING_MESSAGE =
+  "Ordine in sospeso oltre soglia senza execution log: marcato come rifiutato.";
 
 export class IdempotencyKeyError extends Error {
   constructor(message: string) {
@@ -35,6 +40,13 @@ function parseRiskReasons(raw: string) {
   } catch {
     return { reasons: [raw], warnings: [], allowedAmount: 0 };
   }
+}
+
+function parsePendingStaleMs(): number {
+  const raw = process.env.PENDING_EXECUTION_STALE_MS?.trim();
+  if (!raw) return DEFAULT_PENDING_STALE_MS;
+  const value = Number.parseInt(raw, 10);
+  return Number.isFinite(value) && value > 0 ? value : DEFAULT_PENDING_STALE_MS;
 }
 
 export async function findExistingExecution(
@@ -76,15 +88,36 @@ export async function findExistingExecution(
   };
 
   if (existing.status === "PENDING" && !executionLog) {
-    return {
-      ...response,
-      executionIncomplete: true,
-      execution: {
-        success: false,
-        fillPrice: null,
-        message:
-          "Stato esecuzione incompleto: ordine in sospeso senza execution log.",
+    const staleMs = parsePendingStaleMs();
+    if (ageMs < staleMs) {
+      return {
+        ...response,
+        executionIncomplete: true,
+        execution: {
+          success: false,
+          fillPrice: null,
+          message:
+            "Stato esecuzione incompleto: ordine in sospeso senza execution log.",
+        },
+      };
+    }
+
+    const rejected = await rejectOrderAttempt({
+      orderIntentId: existing.id,
+      idempotencyKey,
+      mode: existing.executionMode ?? "MOCK",
+      reason: STALE_PENDING_MESSAGE,
+      auditAction: "EXECUTION_STALE_PENDING",
+      riskDecision: {
+        ...response.riskDecision,
+        blocked: true,
       },
+      auditPayload: { ageMs, staleMs },
+    });
+
+    return {
+      ...rejected,
+      idempotentReplay: true,
     };
   }
 
@@ -95,6 +128,12 @@ export async function findExistingExecution(
       message: executionLog.message,
       brokerOrderId: executionLog.brokerOrderId ?? undefined,
     };
+    if (executionLog.status === "REJECTED") {
+      response.riskDecision = {
+        ...response.riskDecision,
+        blocked: true,
+      };
+    }
     return response;
   }
 

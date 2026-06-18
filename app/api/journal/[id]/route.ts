@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { applyJournalScoring, scoreJournal } from "@/lib/journal";
-import { writeAuditLog } from "@/lib/security";
+import {
+  mapMutatingSecurityError,
+  verifyMutatingRequest,
+  writeAuditLog,
+} from "@/lib/security";
 
 const updateJournalSchema = z.object({
   title: z.string().min(1).max(200).optional(),
@@ -23,6 +27,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    verifyMutatingRequest(request);
     const { id } = await params;
     const body = await request.json();
     const parsed = updateJournalSchema.safeParse(body);
@@ -70,6 +75,8 @@ export async function PATCH(
 
     return NextResponse.json({ journal });
   } catch (error) {
+    const securityError = mapMutatingSecurityError(error);
+    if (securityError) return securityError;
     console.error(error);
     return NextResponse.json(
       { error: "Errore nell'aggiornamento del journal.", code: "JOURNAL_UPDATE_ERROR" },
