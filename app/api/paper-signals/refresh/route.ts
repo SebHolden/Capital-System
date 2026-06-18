@@ -1,15 +1,20 @@
 import { NextResponse } from "next/server";
-import { evaluatePromotions, refreshPaperSignalMetrics } from "@/lib/paper-signals";
+import {
+  refreshPaperSignalMetrics,
+  runEvaluationPipeline,
+} from "@/lib/paper-signals";
 import { mapMutatingSecurityError, verifyMutatingRequest } from "@/lib/security";
 
 export async function POST(request: Request) {
   try {
     verifyMutatingRequest(request);
     const refreshed = await refreshPaperSignalMetrics();
-    const promotion = await evaluatePromotions();
+    const evaluation = await runEvaluationPipeline();
     return NextResponse.json({
       ...refreshed,
-      promoted: promotion.promoted,
+      promoted: evaluation.promoted,
+      degraded: evaluation.degraded,
+      evaluationsSynced: evaluation.evaluationsSynced,
     });
   } catch (error) {
     const securityError = mapMutatingSecurityError(error);

@@ -315,7 +315,33 @@ PAPER_MAX_BACKTEST_DRAWDOWN_PCT=25
 PAPER_PROMOTION_MIN_SIGNALS=3
 PAPER_PROMOTION_MIN_AVG_30D_PCT=0
 PAPER_MAX_MAE_PCT=15
+PAPER_WIN_THRESHOLD_PCT=2
+PAPER_LOSS_THRESHOLD_PCT=-2
+PAPER_PROMOTION_MIN_WIN_RATE_PCT=40
 ```
+
+## Paper Trading Reliability + Strategy Evaluation
+
+Il sistema valuta le strategie **prima** di qualsiasi esecuzione reale:
+
+1. **Outcome classification** — ogni segnale paper viene classificato `WIN` / `LOSS` / `FLAT` / `EXPIRED` / `INSUFFICIENT_DATA` / `PENDING` in base al risultato 30d e alle soglie env
+2. **Strategy score** — punteggio 0–100 da win rate, avg 30d, MAE/MFE ratio, rule followed %, qualità dati
+3. **Rating** — `POOR` / `WEAK` / `WATCH` / `GOOD` / `PROMOTABLE`
+4. **Promotion / Degradation** — promozione analitica a `PROMOTED` o degradazione a `REJECTED` in base ai risultati paper (non abilita live)
+
+**UI:** `/strategies` (leaderboard con score e raccomandazione), `/signals` (outcome per segnale), `/reports` tab **Strategie** (report valutazione).
+
+**Variabili env aggiuntive:**
+
+```env
+PAPER_WIN_THRESHOLD_PCT=2
+PAPER_LOSS_THRESHOLD_PCT=-2
+PAPER_MIN_BARS_FOR_30D=25
+PAPER_PROMOTION_MIN_WIN_RATE_PCT=40
+```
+
+Il live trading resta disabilitato (`ENABLE_LIVE_TRADING=false`, `EXECUTION_MODE=mock`).
+Nessuna strategia può chiamare direttamente il broker — `lib/paper-signals/` resta signal-only.
 
 ## Milestone 9 — Live trading protetto
 

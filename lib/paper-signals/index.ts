@@ -5,7 +5,7 @@ import type { PerformanceMetrics } from "@/lib/backtesting/types";
 import { checkBacktestEligibility } from "./eligibility";
 import { generatePaperSignals } from "./generate";
 import { refreshPaperSignalMetrics } from "./monitor";
-import { evaluatePromotions } from "./promotion";
+import { runEvaluationPipeline } from "./promotion";
 
 export class PaperActivationError extends Error {
   constructor(
@@ -139,21 +139,35 @@ export async function activatePaperStrategy(
 export async function runPaperSignalsPipeline() {
   const generated = await generatePaperSignals();
   const refreshed = await refreshPaperSignalMetrics();
-  const promotion = await evaluatePromotions();
+  const evaluation = await runEvaluationPipeline();
 
   return {
     generated,
     refreshed,
-    promotion,
+    promotion: { promoted: evaluation.promoted },
+    degradation: { degraded: evaluation.degraded },
+    evaluationsSynced: evaluation.evaluationsSynced,
   };
 }
 
 export { generatePaperSignals } from "./generate";
 export { refreshPaperSignalMetrics } from "./monitor";
-export { evaluatePromotions } from "./promotion";
+export {
+  evaluatePromotions,
+  evaluateDegradations,
+  runEvaluationPipeline,
+} from "./promotion";
 export { checkBacktestEligibility } from "./eligibility";
-export { getPaperStrategyRankings } from "./rankings";
+export { getPaperStrategyRankings, syncStrategyEvaluations } from "./rankings";
 export type { PaperStrategyRanking } from "./rankings";
 export { computeSignalMetrics } from "./metrics";
 export { resolveSignalStatus } from "./lifecycle";
 export type { SignalMetrics } from "./metrics";
+export { classifyOutcome, isEvaluatedOutcome } from "./outcome";
+export {
+  computeStrategyScore,
+  computeRating,
+  computeRecommendation,
+} from "./scoring";
+export type { StrategyScoreInput, StrategyRecommendation } from "./scoring";
+export { shouldDegrade, DEGRADATION_RULES } from "./degradation";

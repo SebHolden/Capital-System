@@ -21,10 +21,34 @@ interface SignalRow {
   mfePct: number | null;
   ruleFollowed: boolean;
   status: string;
+  outcome: string;
   closeReason: string | null;
   reason: string;
-  strategy: { id: string; name: string };
+  strategy: {
+    id: string;
+    name: string;
+    evaluationScore?: number | null;
+    rating?: string | null;
+  };
   asset: { symbol: string };
+}
+
+function outcomeVariant(
+  outcome: string,
+): "success" | "danger" | "warning" | "muted" | "default" {
+  switch (outcome) {
+    case "WIN":
+      return "success";
+    case "LOSS":
+      return "danger";
+    case "FLAT":
+      return "muted";
+    case "EXPIRED":
+    case "INSUFFICIENT_DATA":
+      return "warning";
+    default:
+      return "default";
+  }
 }
 
 export function SignalsClient({ initialSignals }: { initialSignals: SignalRow[] }) {
@@ -106,6 +130,8 @@ export function SignalsClient({ initialSignals }: { initialSignals: SignalRow[] 
                   <th className="p-2">7d</th>
                   <th className="p-2">30d</th>
                   <th className="p-2">MAE/MFE</th>
+                  <th className="p-2">Outcome</th>
+                  <th className="p-2">Score strat.</th>
                   <th className="p-2">Rule</th>
                 </tr>
               </thead>
@@ -143,6 +169,14 @@ export function SignalsClient({ initialSignals }: { initialSignals: SignalRow[] 
                     <td className="p-2 text-xs text-slate-400">
                       {s.maePct !== null ? formatPct(s.maePct) : "—"} /{" "}
                       {s.mfePct !== null ? formatPct(s.mfePct) : "—"}
+                    </td>
+                    <td className="p-2">
+                      <Badge variant={outcomeVariant(s.outcome)}>{s.outcome}</Badge>
+                    </td>
+                    <td className="p-2 text-slate-400">
+                      {s.strategy.evaluationScore != null
+                        ? `${s.strategy.evaluationScore}${s.strategy.rating ? ` (${s.strategy.rating})` : ""}`
+                        : "—"}
                     </td>
                     <td className="p-2">
                       {s.ruleFollowed ? (

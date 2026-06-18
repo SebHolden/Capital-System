@@ -88,16 +88,26 @@ export default async function DashboardPage() {
           <p className="mt-1 text-sm text-slate-400">
             {topPaper ? (
               <>
-                Top: {topPaper.strategyName}{" "}
+                Top: {topPaper.strategyName} — score {topPaper.score}{" "}
+                <Badge variant="muted" className="ml-1">
+                  {topPaper.rating}
+                </Badge>
                 {topPaper.avg30dPct !== null
-                  ? formatPct(topPaper.avg30dPct)
-                  : "—"}{" "}
-                avg 30d
+                  ? ` (${formatPct(topPaper.avg30dPct)} avg 30d)`
+                  : ""}
               </>
             ) : (
               "Nessun dato paper"
             )}
           </p>
+          {paperRankings.length > 0 && (
+            <p className="mt-1 text-xs text-slate-500">
+              {paperRankings.filter((r) => r.rating === "PROMOTABLE").length}{" "}
+              promovibili ·{" "}
+              {paperRankings.filter((r) => r.rating === "POOR" || r.rating === "WEAK").length}{" "}
+              deboli
+            </p>
+          )}
           <Link
             href="/strategies"
             className="mt-2 inline-block text-sm text-blue-400 hover:underline"

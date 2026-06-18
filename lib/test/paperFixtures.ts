@@ -1,9 +1,51 @@
 import { execSync } from "child_process";
 import fs from "fs";
 import path from "path";
-import { prisma } from "@/lib/db";
+import { PrismaClient } from "@prisma/client";
+
+let paperTestPrisma: PrismaClient | null = null;
+
+export function getPaperTestPrisma(): PrismaClient {
+  if (!paperTestPrisma) {
+    paperTestPrisma = new PrismaClient();
+  }
+  return paperTestPrisma;
+}
+
+export async function disconnectPaperFixtures() {
+  if (paperTestPrisma) {
+    await paperTestPrisma.$disconnect();
+    paperTestPrisma = null;
+  }
+}
+
+export function setupPaperTestDatabase(dbFileName: string): void {
+  const dbPath = path.resolve(__dirname, "../../prisma", dbFileName);
+  const dbUrl = `file:${dbPath}`;
+  process.env.DATABASE_URL = dbUrl;
+
+  for (const file of [dbPath, `${dbPath}-journal`]) {
+    if (fs.existsSync(file)) {
+      fs.unlinkSync(file);
+    }
+  }
+
+  execSync("npx prisma db push --accept-data-loss", {
+    env: {
+      ...process.env,
+      DATABASE_URL: dbUrl,
+    },
+    cwd: path.resolve(__dirname, "../.."),
+    stdio: "pipe",
+  });
+
+  paperTestPrisma = new PrismaClient({
+    datasources: { db: { url: dbUrl } },
+  });
+}
 
 export async function resetPaperTables() {
+  const prisma = getPaperTestPrisma();
   await prisma.paperSignal.deleteMany();
   await prisma.backtestRun.deleteMany();
   await prisma.strategy.deleteMany();
@@ -11,6 +53,7 @@ export async function resetPaperTables() {
 }
 
 export async function seedPaperFixtures() {
+  const prisma = getPaperTestPrisma();
   await resetPaperTables();
 
   const asset = await prisma.asset.create({
@@ -40,30 +83,9 @@ export async function seedPaperFixtures() {
   return { asset, strategy, prisma };
 }
 
-export async function disconnectPaperFixtures() {
-  await prisma.$disconnect();
-}
-
+/** @deprecated use setupPaperTestDatabase */
 export function runPaperTestMigrations() {
-  const dbUrl =
-    process.env.DATABASE_URL ??
-    `file:${path.resolve(__dirname, "../../prisma/test-paper.db")}`;
-  const dbPath = dbUrl.replace(/^file:/, "");
-
-  for (const file of [dbPath, `${dbPath}-journal`]) {
-    if (fs.existsSync(file)) {
-      fs.unlinkSync(file);
-    }
-  }
-
-  execSync("npx prisma db push --accept-data-loss", {
-    env: {
-      ...process.env,
-      DATABASE_URL: dbUrl,
-    },
-    cwd: path.resolve(__dirname, "../.."),
-    stdio: "pipe",
-  });
+  setupPaperTestDatabase("test-paper.db");
 }
 
-export { prisma as testPrisma };
+export { getPaperTestPrisma as testPrisma };

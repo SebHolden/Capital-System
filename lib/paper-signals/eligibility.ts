@@ -55,6 +55,12 @@ export function getPaperPromotionMinRuleFollowedPct(): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+export function getPaperPromotionMinWinRatePct(): number {
+  const raw = process.env.PAPER_PROMOTION_MIN_WIN_RATE_PCT;
+  const parsed = raw ? parseFloat(raw) : 40;
+  return Number.isFinite(parsed) ? parsed : 40;
+}
+
 export function checkBacktestEligibility(
   latestRun: BacktestRun | null | undefined,
 ): BacktestEligibilityResult {

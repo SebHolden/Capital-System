@@ -38,6 +38,7 @@ interface PaperSignalRow {
   mfePct: number | null;
   ruleFollowed: boolean;
   status: string;
+  outcome: string;
   closeReason: string | null;
   strategy: { name: string };
   asset: { symbol: string };
@@ -51,12 +52,20 @@ interface PaperRankingRow {
   openCount: number;
   closedCount: number;
   expiredCount: number;
+  winCount: number;
+  lossCount: number;
+  flatCount: number;
+  evaluatedCount: number;
+  winRate: number | null;
   avgCurrentPct: number | null;
   avg1dPct: number | null;
   avg7dPct: number | null;
   avg30dPct: number | null;
   worstMaePct: number | null;
   ruleFollowedPct: number | null;
+  score: number;
+  rating: string;
+  recommendation: string;
   promotionReady: boolean;
   promotionBlockers: string[];
 }
@@ -68,6 +77,58 @@ const STATUS_LABELS: Record<string, string> = {
   PROMOTED: "Promossa",
   REJECTED: "Rifiutata",
 };
+
+function ratingBadgeVariant(
+  rating: string,
+): "danger" | "warning" | "success" | "muted" | "default" {
+  switch (rating) {
+    case "POOR":
+      return "danger";
+    case "WEAK":
+      return "warning";
+    case "WATCH":
+      return "muted";
+    case "GOOD":
+      return "success";
+    case "PROMOTABLE":
+      return "success";
+    default:
+      return "default";
+  }
+}
+
+function outcomeBadgeVariant(
+  outcome: string,
+): "success" | "danger" | "warning" | "muted" | "default" {
+  switch (outcome) {
+    case "WIN":
+      return "success";
+    case "LOSS":
+      return "danger";
+    case "FLAT":
+      return "muted";
+    case "EXPIRED":
+    case "INSUFFICIENT_DATA":
+      return "warning";
+    default:
+      return "default";
+  }
+}
+
+function recommendationLabel(recommendation: string): string {
+  switch (recommendation) {
+    case "PROMOTE":
+      return "Promuovi";
+    case "WATCH":
+      return "Osserva";
+    case "DEGRADE":
+      return "Degrada";
+    case "INSUFFICIENT_DATA":
+      return "Dati insufficienti";
+    default:
+      return recommendation;
+  }
+}
 
 function statusClass(status: string): string {
   switch (status) {
@@ -164,7 +225,11 @@ export function StrategiesClient({
         data.promoted?.length > 0
           ? ` Promosse: ${data.promoted.length}.`
           : "";
-      setMessage(`Monitor aggiornato: ${data.updated} segnali.${promoted}`);
+      const degraded =
+        data.degraded?.length > 0
+          ? ` Degradate: ${data.degraded.length}.`
+          : "";
+      setMessage(`Monitor aggiornato: ${data.updated} segnali.${promoted}${degraded}`);
       await reload();
     } catch (err) {
       alert(err instanceof Error ? err.message : "Errore refresh");
@@ -297,12 +362,12 @@ export function StrategiesClient({
                   <th className="pb-2 pr-4">Strategia</th>
                   <th className="pb-2 pr-4">Status</th>
                   <th className="pb-2 pr-4">Segnali</th>
-                  <th className="pb-2 pr-4">1d</th>
-                  <th className="pb-2 pr-4">7d</th>
+                  <th className="pb-2 pr-4">Win rate</th>
+                  <th className="pb-2 pr-4">Score</th>
+                  <th className="pb-2 pr-4">Rating</th>
                   <th className="pb-2 pr-4">30d</th>
                   <th className="pb-2 pr-4">Worst MAE</th>
-                  <th className="pb-2 pr-4">Rule %</th>
-                  <th className="pb-2">Promozione</th>
+                  <th className="pb-2">Raccomandazione</th>
                 </tr>
               </thead>
               <tbody>
@@ -319,14 +384,25 @@ export function StrategiesClient({
                       {ranking.closedCount}c / {ranking.expiredCount}e)
                     </td>
                     <td className="py-2 pr-4 text-slate-400">
-                      {ranking.avg1dPct !== null
-                        ? formatPct(ranking.avg1dPct)
+                      {ranking.winRate !== null
+                        ? `${ranking.winCount}/${ranking.winCount + ranking.lossCount + ranking.flatCount} (${ranking.winRate.toFixed(0)}%)`
                         : "—"}
                     </td>
-                    <td className="py-2 pr-4 text-slate-400">
-                      {ranking.avg7dPct !== null
-                        ? formatPct(ranking.avg7dPct)
-                        : "—"}
+                    <td className="py-2 pr-4 text-slate-300">
+                      <div className="flex items-center gap-2">
+                        <span>{ranking.score}</span>
+                        <div className="h-1.5 w-16 overflow-hidden rounded bg-slate-800">
+                          <div
+                            className="h-full bg-blue-500"
+                            style={{ width: `${ranking.score}%` }}
+                          />
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-2 pr-4">
+                      <Badge variant={ratingBadgeVariant(ranking.rating)}>
+                        {ranking.rating}
+                      </Badge>
                     </td>
                     <td className="py-2 pr-4 text-slate-400">
                       {ranking.avg30dPct !== null
@@ -338,23 +414,21 @@ export function StrategiesClient({
                         ? formatPct(ranking.worstMaePct)
                         : "—"}
                     </td>
-                    <td className="py-2 pr-4 text-slate-400">
-                      {ranking.ruleFollowedPct !== null
-                        ? `${ranking.ruleFollowedPct.toFixed(0)}%`
-                        : "—"}
-                    </td>
                     <td className="py-2">
                       {ranking.promotionReady ? (
-                        <Badge variant="success">Pronta</Badge>
-                      ) : ranking.promotionBlockers.length > 0 ? (
+                        <Badge variant="success">
+                          {recommendationLabel(ranking.recommendation)}
+                        </Badge>
+                      ) : (
                         <span
                           className="text-xs text-amber-400"
                           title={ranking.promotionBlockers.join(" ")}
                         >
-                          {ranking.promotionBlockers[0]}
+                          {recommendationLabel(ranking.recommendation)}
+                          {ranking.promotionBlockers[0]
+                            ? ` — ${ranking.promotionBlockers[0]}`
+                            : ""}
                         </span>
-                      ) : (
-                        <span className="text-xs text-slate-500">—</span>
                       )}
                     </td>
                   </tr>
@@ -387,6 +461,7 @@ export function StrategiesClient({
                   <th className="pb-2 pr-4">30d</th>
                   <th className="pb-2 pr-4">MAE</th>
                   <th className="pb-2 pr-4">MFE</th>
+                  <th className="pb-2 pr-4">Outcome</th>
                   <th className="pb-2">Rule</th>
                 </tr>
               </thead>
@@ -438,6 +513,11 @@ export function StrategiesClient({
                     </td>
                     <td className="py-2 pr-4 text-green-400">
                       {signal.mfePct !== null ? formatPct(signal.mfePct) : "—"}
+                    </td>
+                    <td className="py-2 pr-4">
+                      <Badge variant={outcomeBadgeVariant(signal.outcome)}>
+                        {signal.outcome}
+                      </Badge>
                     </td>
                     <td className="py-2 text-slate-400">
                       {signal.ruleFollowed ? "Sì" : "No"}

@@ -44,6 +44,7 @@ export default async function StrategiesPage() {
           mfePct: signal.mfePct,
           ruleFollowed: signal.ruleFollowed,
           status: signal.status,
+          outcome: signal.outcome,
           closeReason: signal.closeReason,
           strategy: { name: signal.strategy.name },
           asset: { symbol: signal.asset.symbol },

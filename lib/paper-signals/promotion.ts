@@ -1,6 +1,10 @@
 import { prisma } from "@/lib/db";
 import { writeAuditLog } from "@/lib/security";
-import { buildStrategyRanking } from "./rankings";
+import { shouldDegrade } from "./degradation";
+import {
+  buildStrategyRanking,
+  syncStrategyEvaluations,
+} from "./rankings";
 
 export async function evaluatePromotions(): Promise<{
   promoted: string[];
@@ -22,23 +26,18 @@ export async function evaluatePromotions(): Promise<{
       strategy.paperSignals,
     );
 
-    if (!ranking.promotionReady) continue;
-
-    const with30d = strategy.paperSignals.filter(
-      (s) => s.result30dPct !== null && s.result30dPct !== undefined,
-    );
-    const eligibleForAvg = with30d.filter((s) => s.ruleFollowed);
-    const avg30dSource =
-      eligibleForAvg.length > 0 ? eligibleForAvg : with30d;
-    const avg30d =
-      avg30dSource.reduce((sum, s) => sum + (s.result30dPct ?? 0), 0) /
-      avg30dSource.length;
+    if (!ranking.promotionReady || ranking.recommendation !== "PROMOTE") {
+      continue;
+    }
 
     await prisma.strategy.update({
       where: { id: strategy.id },
       data: {
         status: "PROMOTED",
         promotedAt: new Date(),
+        evaluationScore: ranking.score,
+        rating: ranking.rating,
+        lastEvaluatedAt: new Date(),
       },
     });
 
@@ -46,11 +45,75 @@ export async function evaluatePromotions(): Promise<{
 
     await writeAuditLog("STRATEGY_PROMOTED", "Strategy", {
       strategyId: strategy.id,
-      avg30dPct: avg30d,
-      signalCount: with30d.length,
+      avg30dPct: ranking.avg30dPct,
+      signalCount: ranking.evaluatedCount,
       ruleFollowedPct: ranking.ruleFollowedPct,
+      score: ranking.score,
+      rating: ranking.rating,
+      winRate: ranking.winRate,
     });
   }
 
   return { promoted };
+}
+
+export async function evaluateDegradations(): Promise<{
+  degraded: string[];
+}> {
+  const strategies = await prisma.strategy.findMany({
+    where: { status: "PAPER_ACTIVE" },
+    include: { paperSignals: true },
+  });
+
+  const degraded: string[] = [];
+
+  for (const strategy of strategies) {
+    if (strategy.paperSignals.length === 0) continue;
+
+    const ranking = buildStrategyRanking(
+      { id: strategy.id, name: strategy.name, status: strategy.status },
+      strategy.paperSignals,
+    );
+
+    const { degrade, reasons } = shouldDegrade(ranking);
+    if (!degrade) continue;
+
+    await prisma.strategy.update({
+      where: { id: strategy.id },
+      data: {
+        status: "REJECTED",
+        evaluationScore: ranking.score,
+        rating: ranking.rating,
+        lastEvaluatedAt: new Date(),
+      },
+    });
+
+    degraded.push(strategy.id);
+
+    await writeAuditLog("STRATEGY_DEGRADED", "Strategy", {
+      strategyId: strategy.id,
+      score: ranking.score,
+      rating: ranking.rating,
+      reasons,
+      winRate: ranking.winRate,
+    });
+  }
+
+  return { degraded };
+}
+
+export async function runEvaluationPipeline(): Promise<{
+  promoted: string[];
+  degraded: string[];
+  evaluationsSynced: number;
+}> {
+  const degradation = await evaluateDegradations();
+  const promotion = await evaluatePromotions();
+  const sync = await syncStrategyEvaluations();
+
+  return {
+    promoted: promotion.promoted,
+    degraded: degradation.degraded,
+    evaluationsSynced: sync.updated,
+  };
 }

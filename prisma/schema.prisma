@@ -86,6 +86,23 @@ enum PaperSignalStatus {
   EXPIRED
 }
 
+enum PaperSignalOutcome {
+  WIN
+  LOSS
+  FLAT
+  EXPIRED
+  INSUFFICIENT_DATA
+  PENDING
+}
+
+enum StrategyRating {
+  POOR
+  WEAK
+  WATCH
+  GOOD
+  PROMOTABLE
+}
+
 enum PaperSignalType {
   BUY
   SELL
@@ -330,6 +347,9 @@ model Strategy {
   primaryAssetId  String?
   paperActiveAt   DateTime?
   promotedAt      DateTime?
+  evaluationScore Int?
+  rating          StrategyRating?
+  lastEvaluatedAt DateTime?
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
@@ -402,6 +422,8 @@ model PaperSignal {
   status           PaperSignalStatus @default(OPEN)
   closedAt         DateTime?
   closeReason      String?
+  outcome          PaperSignalOutcome @default(PENDING)
+  evaluatedAt      DateTime?
   lastMonitoredAt  DateTime?
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt

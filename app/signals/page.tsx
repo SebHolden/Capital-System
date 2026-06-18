@@ -21,9 +21,15 @@ export default async function SignalsPage() {
           mfePct: s.mfePct,
           ruleFollowed: s.ruleFollowed,
           status: s.status,
+          outcome: s.outcome,
           closeReason: s.closeReason,
           reason: s.reason,
-          strategy: { id: s.strategy.id, name: s.strategy.name },
+          strategy: {
+            id: s.strategy.id,
+            name: s.strategy.name,
+            evaluationScore: s.strategy.evaluationScore,
+            rating: s.strategy.rating,
+          },
           asset: { symbol: s.asset.symbol },
         }))}
       />

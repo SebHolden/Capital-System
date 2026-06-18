@@ -1,16 +1,22 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   disconnectPaperFixtures,
-  runPaperTestMigrations,
+  getPaperTestPrisma,
   seedPaperFixtures,
-  testPrisma,
+  setupPaperTestDatabase,
 } from "@/lib/test/paperFixtures";
+
+vi.mock("@/lib/db", () => ({
+  get prisma() {
+    return getPaperTestPrisma();
+  },
+}));
+
 import { buildStrategyRanking, getPaperStrategyRankings } from "./rankings";
 
 describe("paper strategy rankings", () => {
   beforeAll(() => {
-    process.env.DATABASE_URL = "file:./prisma/test-paper-rankings.db";
-    runPaperTestMigrations();
+    setupPaperTestDatabase("test-paper-rankings.db");
   });
 
   beforeEach(async () => {
@@ -22,10 +28,10 @@ describe("paper strategy rankings", () => {
   });
 
   it("aggregates strategy metrics and promotion readiness", async () => {
-    const strategy = await testPrisma.strategy.findFirstOrThrow();
-    const asset = await testPrisma.asset.findFirstOrThrow();
+    const strategy = await getPaperTestPrisma().strategy.findFirstOrThrow();
+    const asset = await getPaperTestPrisma().asset.findFirstOrThrow();
 
-    await testPrisma.paperSignal.createMany({
+    await getPaperTestPrisma().paperSignal.createMany({
       data: [
         {
           strategyId: strategy.id,
@@ -37,6 +43,7 @@ describe("paper strategy rankings", () => {
           result30dPct: 4,
           result1dPct: 1,
           ruleFollowed: true,
+          outcome: "WIN",
           status: "CLOSED",
         },
         {
@@ -49,6 +56,7 @@ describe("paper strategy rankings", () => {
           result30dPct: 6,
           result1dPct: 2,
           ruleFollowed: true,
+          outcome: "WIN",
           status: "CLOSED",
         },
         {
@@ -61,6 +69,7 @@ describe("paper strategy rankings", () => {
           result30dPct: 5,
           result1dPct: 1.5,
           ruleFollowed: true,
+          outcome: "WIN",
           status: "OPEN",
         },
       ],
@@ -68,7 +77,7 @@ describe("paper strategy rankings", () => {
 
     const ranking = buildStrategyRanking(
       { id: strategy.id, name: strategy.name, status: strategy.status },
-      await testPrisma.paperSignal.findMany({ where: { strategyId: strategy.id } }),
+      await getPaperTestPrisma().paperSignal.findMany({ where: { strategyId: strategy.id } }),
     );
 
     expect(ranking.signalCount).toBe(3);
@@ -76,15 +85,18 @@ describe("paper strategy rankings", () => {
     expect(ranking.openCount).toBe(1);
     expect(ranking.avg30dPct).toBeCloseTo(5);
     expect(ranking.avg1dPct).toBeCloseTo(1.5);
-    expect(ranking.ruleFollowedPct).toBe(100);
-    expect(ranking.promotionReady).toBe(true);
+    expect(ranking.winCount).toBe(3);
+    expect(ranking.winRate).toBe(100);
+    expect(ranking.score).toBeGreaterThan(50);
+    expect(ranking.rating).toBeDefined();
+    expect(ranking.evaluatedCount).toBe(3);
   });
 
   it("returns sorted rankings from database", async () => {
-    const strategy = await testPrisma.strategy.findFirstOrThrow();
-    const asset = await testPrisma.asset.findFirstOrThrow();
+    const strategy = await getPaperTestPrisma().strategy.findFirstOrThrow();
+    const asset = await getPaperTestPrisma().asset.findFirstOrThrow();
 
-    await testPrisma.paperSignal.create({
+    await getPaperTestPrisma().paperSignal.create({
       data: {
         strategyId: strategy.id,
         assetId: asset.id,

@@ -12,23 +12,27 @@ import type {
   MonthlyReportData,
   WeeklyReport,
 } from "@/lib/reports/types";
+import type { StrategyEvaluationReport } from "@/lib/reports/strategyEvaluation";
 import { formatCurrency, formatPct } from "@/lib/utils";
 
-type Tab = "daily" | "weekly" | "monthly";
+type Tab = "daily" | "weekly" | "monthly" | "strategy";
 
 export function ReportsClient({
   initialDaily,
   initialWeekly,
   initialMonthly,
+  initialStrategy,
 }: {
   initialDaily: DailyReport;
   initialWeekly: WeeklyReport;
   initialMonthly: MonthlyReportData;
+  initialStrategy: StrategyEvaluationReport;
 }) {
   const [tab, setTab] = useState<Tab>("daily");
   const [daily, setDaily] = useState(initialDaily);
   const [weekly, setWeekly] = useState(initialWeekly);
   const [monthly, setMonthly] = useState(initialMonthly);
+  const [strategy, setStrategy] = useState(initialStrategy);
   const [dailyDate, setDailyDate] = useState(initialDaily.date);
   const [weekStart, setWeekStart] = useState(initialWeekly.weekStart);
   const [monthKey, setMonthKey] = useState(initialMonthly.monthKey);
@@ -47,7 +51,9 @@ export function ReportsClient({
           ? "/api/reports/daily"
           : tab === "weekly"
             ? "/api/reports/weekly"
-            : "/api/reports/monthly";
+            : tab === "monthly"
+              ? "/api/reports/monthly"
+              : "/api/reports/strategy";
 
       const res = await fetch(`${endpoint}?${params.toString()}`);
       const data = await res.json();
@@ -56,6 +62,7 @@ export function ReportsClient({
       if (tab === "daily") setDaily(data as DailyReport);
       if (tab === "weekly") setWeekly(data as WeeklyReport);
       if (tab === "monthly") setMonthly(data as MonthlyReportData);
+      if (tab === "strategy") setStrategy(data as StrategyEvaluationReport);
     } catch (err) {
       alert(err instanceof Error ? err.message : "Errore caricamento report");
     } finally {
@@ -74,7 +81,9 @@ export function ReportsClient({
         ? "/api/reports/daily"
         : tab === "weekly"
           ? "/api/reports/weekly"
-          : "/api/reports/monthly";
+          : tab === "monthly"
+            ? "/api/reports/monthly"
+            : "/api/reports/strategy";
 
     const res = await fetch(`${endpoint}?${params.toString()}`);
     if (!res.ok) {
@@ -96,7 +105,8 @@ export function ReportsClient({
       <div>
         <h2 className="text-2xl font-bold text-white">Report</h2>
         <p className="text-sm text-slate-400">
-          Report giornaliero, review settimanale e analisi mensile
+          Report giornaliero, review settimanale, analisi mensile e valutazione
+          strategie paper
         </p>
       </div>
 
@@ -106,6 +116,7 @@ export function ReportsClient({
             ["daily", "Giornaliero"],
             ["weekly", "Settimanale"],
             ["monthly", "Mensile"],
+            ["strategy", "Strategie"],
           ] as const
         ).map(([id, label]) => (
           <Button
@@ -402,6 +413,109 @@ export function ReportsClient({
               </ul>
             )}
           </Card>
+        </>
+      )}
+
+      {tab === "strategy" && (
+        <>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+            {(
+              [
+                ["POOR", strategy.byRating.POOR],
+                ["WEAK", strategy.byRating.WEAK],
+                ["WATCH", strategy.byRating.WATCH],
+                ["GOOD", strategy.byRating.GOOD],
+                ["PROMOTABLE", strategy.byRating.PROMOTABLE],
+              ] as const
+            ).map(([rating, count]) => (
+              <Card key={rating}>
+                <CardTitle>{rating}</CardTitle>
+                <p className="mt-2 text-xl text-white">{count}</p>
+              </Card>
+            ))}
+          </div>
+
+          <Card>
+            <CardTitle>Migliori per score</CardTitle>
+            {strategy.bestByScore.length === 0 ? (
+              <p className="mt-2 text-sm text-slate-400">Nessun dato.</p>
+            ) : (
+              <ul className="mt-2 space-y-1 text-sm text-slate-300">
+                {strategy.bestByScore.map((s) => (
+                  <li key={s.strategyId}>
+                    {s.name}: score {s.score} ({s.rating}
+                    {s.winRate !== null
+                      ? `, win ${s.winRate.toFixed(0)}%`
+                      : ""}
+                    )
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+
+          <Card>
+            <CardTitle>Peggiori per score</CardTitle>
+            {strategy.worstByScore.length === 0 ? (
+              <p className="mt-2 text-sm text-slate-400">Nessun dato.</p>
+            ) : (
+              <ul className="mt-2 space-y-1 text-sm text-slate-300">
+                {strategy.worstByScore.map((s) => (
+                  <li key={s.strategyId}>
+                    {s.name}: score {s.score} ({s.rating})
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Card>
+              <CardTitle>Più volatile (MAE)</CardTitle>
+              <ul className="mt-2 space-y-1 text-sm text-slate-300">
+                {strategy.mostVolatile.map((s) => (
+                  <li key={s.strategyId}>
+                    {s.name}: {formatPct(s.worstMaePct)}
+                  </li>
+                ))}
+              </ul>
+            </Card>
+            <Card>
+              <CardTitle>Più affidabile</CardTitle>
+              <ul className="mt-2 space-y-1 text-sm text-slate-300">
+                {strategy.mostReliable.map((s) => (
+                  <li key={s.strategyId}>
+                    {s.name}: win {s.winRate.toFixed(0)}%, rule{" "}
+                    {s.ruleFollowedPct.toFixed(0)}%
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          </div>
+
+          {strategy.insufficientData.length > 0 && (
+            <Card>
+              <CardTitle>Dati insufficienti</CardTitle>
+              <ul className="mt-2 space-y-1 text-sm text-amber-400">
+                {strategy.insufficientData.map((s) => (
+                  <li key={s.strategyId}>
+                    {s.name}: {s.reason}
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
+
+          {strategy.warnings.length > 0 && (
+            <Card>
+              <CardTitle>Warning</CardTitle>
+              <ul className="mt-2 space-y-1 text-sm text-amber-400">
+                {strategy.warnings.map((w) => (
+                  <li key={w}>{w}</li>
+                ))}
+              </ul>
+            </Card>
+          )}
         </>
       )}
     </div>

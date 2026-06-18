@@ -1,10 +1,17 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   disconnectPaperFixtures,
-  runPaperTestMigrations,
+  getPaperTestPrisma,
   seedPaperFixtures,
-  testPrisma,
+  setupPaperTestDatabase,
 } from "@/lib/test/paperFixtures";
+
+vi.mock("@/lib/db", () => ({
+  get prisma() {
+    return getPaperTestPrisma();
+  },
+}));
+
 import { refreshPaperSignalMetrics } from "./monitor";
 import { closeOppositeOpenSignals } from "./lifecycle";
 
@@ -31,8 +38,7 @@ function buildBars(startClose: number, days: number) {
 
 describe("refreshPaperSignalMetrics integration", () => {
   beforeAll(() => {
-    process.env.DATABASE_URL = "file:./prisma/test-paper.db";
-    runPaperTestMigrations();
+    setupPaperTestDatabase("test-paper.db");
   });
 
   beforeEach(async () => {
@@ -47,16 +53,15 @@ describe("refreshPaperSignalMetrics integration", () => {
   });
 
   it("populates 1d/7d/30d metrics and closes at 30d horizon", async () => {
-    const { asset, strategy } = await testPrisma.strategy.findFirstOrThrow({
+    const prisma = getPaperTestPrisma();
+    const strategy = await prisma.strategy.findFirstOrThrow({
       include: { primaryAsset: true },
-    }).then(async (s) => ({
-      asset: s.primaryAsset!,
-      strategy: s,
-    }));
+    });
+    const asset = strategy.primaryAsset!;
     const signalDate = new Date("2026-01-01T12:00:00.000Z");
     const bars = buildBars(100, 35);
 
-    const signal = await testPrisma.paperSignal.create({
+    const signal = await prisma.paperSignal.create({
       data: {
         strategyId: strategy.id,
         assetId: asset.id,
@@ -84,7 +89,7 @@ describe("refreshPaperSignalMetrics integration", () => {
     const { updated } = await refreshPaperSignalMetrics();
     expect(updated).toBe(1);
 
-    const refreshed = await testPrisma.paperSignal.findUniqueOrThrow({
+    const refreshed = await prisma.paperSignal.findUniqueOrThrow({
       where: { id: signal.id },
     });
 
@@ -95,16 +100,18 @@ describe("refreshPaperSignalMetrics integration", () => {
     expect(refreshed.mfePct).not.toBeNull();
     expect(refreshed.status).toBe("CLOSED");
     expect(refreshed.closeReason).toBe("HORIZON_30D");
+    expect(refreshed.outcome).toBe("WIN");
 
     vi.useRealTimers();
   });
 
   it("expires signal after 90 days without 30d bar", async () => {
-    const strategy = await testPrisma.strategy.findFirstOrThrow();
-    const asset = await testPrisma.asset.findFirstOrThrow();
+    const prisma = getPaperTestPrisma();
+    const strategy = await prisma.strategy.findFirstOrThrow();
+    const asset = await prisma.asset.findFirstOrThrow();
     const signalDate = new Date("2026-01-01T12:00:00.000Z");
 
-    const signal = await testPrisma.paperSignal.create({
+    const signal = await prisma.paperSignal.create({
       data: {
         strategyId: strategy.id,
         assetId: asset.id,
@@ -134,21 +141,23 @@ describe("refreshPaperSignalMetrics integration", () => {
 
     await refreshPaperSignalMetrics();
 
-    const refreshed = await testPrisma.paperSignal.findUniqueOrThrow({
+    const refreshed = await prisma.paperSignal.findUniqueOrThrow({
       where: { id: signal.id },
     });
 
     expect(refreshed.status).toBe("EXPIRED");
     expect(refreshed.closeReason).toBe("EXPIRED");
+    expect(refreshed.outcome).toBe("EXPIRED");
 
     vi.useRealTimers();
   });
 
   it("closes opposite open signal", async () => {
-    const strategy = await testPrisma.strategy.findFirstOrThrow();
-    const asset = await testPrisma.asset.findFirstOrThrow();
+    const prisma = getPaperTestPrisma();
+    const strategy = await prisma.strategy.findFirstOrThrow();
+    const asset = await prisma.asset.findFirstOrThrow();
 
-    const openSell = await testPrisma.paperSignal.create({
+    const openSell = await prisma.paperSignal.create({
       data: {
         strategyId: strategy.id,
         assetId: asset.id,
@@ -169,7 +178,7 @@ describe("refreshPaperSignalMetrics integration", () => {
 
     expect(closed).toBe(1);
 
-    const refreshed = await testPrisma.paperSignal.findUniqueOrThrow({
+    const refreshed = await prisma.paperSignal.findUniqueOrThrow({
       where: { id: openSell.id },
     });
 
