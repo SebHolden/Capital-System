@@ -15,7 +15,8 @@
     "paper-signals:run": "tsx scripts/paper-signals-run.ts",
     "reports:daily": "tsx scripts/reports-daily.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "architecture:check": "tsx scripts/architecture-check.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

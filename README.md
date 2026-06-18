@@ -1,5 +1,7 @@
 # Seb Capital System
 
+![CI](https://github.com/SebHolden/Capital-System/actions/workflows/ci.yml/badge.svg)
+
 Dashboard personale per gestione capitale, rischio, journal decisionale e simulazione ordini.
 
 **Disclaimer:** strumento personale — nessuna promessa di rendimento. Progettato per proteggere il capitale e impedire decisioni impulsive.
@@ -44,7 +46,8 @@ Apri [http://localhost:3000](http://localhost:3000) — redirect automatico a `/
 | `npm run db:reset` | Reset DB + seed |
 | `npm run paper-signals:run` | Pipeline segnali paper (scheduler) |
 | `npm run reports:daily` | Snapshot report giornaliero + `PortfolioSnapshot` |
-| `npm run test` | Vitest (risk, reports, live limits) |
+| `npm run test` | Vitest (risk, reports, live limits, architecture guard) |
+| `npm run architecture:check` | Verifica automatica regole in `docs/architecture-rules.md` |
 
 ## Architettura
 
@@ -111,6 +114,8 @@ Documentazione di riferimento (solo testo, nessuna integrazione attiva):
 | [docs/architecture-rules.md](docs/architecture-rules.md) | Regole obbligatorie: pipeline ordini, LIVE checklist, anti-pattern |
 | [docs/reference-architecture.md](docs/reference-architecture.md) | Cosa imparare da Alpaca-py, Freqtrade, VectorBT, Backtrader, Zipline, NautilusTrader, Lean, Hummingbot |
 | [docs/future-python-sidecar.md](docs/future-python-sidecar.md) | Design sidecar Python read-only per research (non implementato) |
+
+Le regole in `docs/architecture-rules.md` sono enforceate automaticamente da `npm run architecture:check` (import vietati, assenza di ordini reali in backtest, guardie sulle API mutanti, divieti su eventuale codice Python futuro). La CI esegue lo stesso controllo su ogni push.
 
 ## Allineamento spec (gap remediation)
 
