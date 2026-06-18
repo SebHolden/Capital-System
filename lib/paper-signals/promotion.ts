@@ -1,10 +1,6 @@
 import { prisma } from "@/lib/db";
 import { writeAuditLog } from "@/lib/security";
-import {
-  getPaperMaxMaePct,
-  getPaperPromotionMinAvg30dPct,
-  getPaperPromotionMinSignals,
-} from "./eligibility";
+import { buildStrategyRanking } from "./rankings";
 
 export async function evaluatePromotions(): Promise<{
   promoted: string[];
@@ -19,26 +15,24 @@ export async function evaluatePromotions(): Promise<{
   });
 
   const promoted: string[] = [];
-  const minSignals = getPaperPromotionMinSignals();
-  const minAvg30d = getPaperPromotionMinAvg30dPct();
-  const maxMae = getPaperMaxMaePct();
 
   for (const strategy of strategies) {
+    const ranking = buildStrategyRanking(
+      { id: strategy.id, name: strategy.name, status: strategy.status },
+      strategy.paperSignals,
+    );
+
+    if (!ranking.promotionReady) continue;
+
     const with30d = strategy.paperSignals.filter(
       (s) => s.result30dPct !== null && s.result30dPct !== undefined,
     );
-
-    if (with30d.length < minSignals) continue;
-
+    const eligibleForAvg = with30d.filter((s) => s.ruleFollowed);
+    const avg30dSource =
+      eligibleForAvg.length > 0 ? eligibleForAvg : with30d;
     const avg30d =
-      with30d.reduce((sum, s) => sum + (s.result30dPct ?? 0), 0) /
-      with30d.length;
-
-    const maeBreached = strategy.paperSignals.some(
-      (s) => s.maePct !== null && s.maePct !== undefined && s.maePct < -maxMae,
-    );
-
-    if (avg30d < minAvg30d || maeBreached) continue;
+      avg30dSource.reduce((sum, s) => sum + (s.result30dPct ?? 0), 0) /
+      avg30dSource.length;
 
     await prisma.strategy.update({
       where: { id: strategy.id },
@@ -54,6 +48,7 @@ export async function evaluatePromotions(): Promise<{
       strategyId: strategy.id,
       avg30dPct: avg30d,
       signalCount: with30d.length,
+      ruleFollowedPct: ranking.ruleFollowedPct,
     });
   }
 

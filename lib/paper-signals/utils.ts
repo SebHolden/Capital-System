@@ -41,7 +41,7 @@ export function resultPctForSide(
 
 export function findBarOnOrAfter(bars: PriceBar[], target: Date): PriceBar | null {
   const key = toDateKey(target);
-  return bars.find((bar) => bar.date >= key) ?? bars[bars.length - 1] ?? null;
+  return bars.find((bar) => bar.date >= key) ?? null;
 }
 
 export function findBarOnOrBefore(bars: PriceBar[], target: Date): PriceBar | null {

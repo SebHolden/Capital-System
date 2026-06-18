@@ -1,18 +1,9 @@
-import type { PaperSignalType, StrategyType } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { fetchPriceHistory } from "@/lib/prices/history";
 import { effectivePrice, resolvePrice } from "@/lib/prices";
-import {
-  getDefaultStrategyConfig,
-  getStrategyDefinition,
-} from "@/lib/strategies";
-import {
-  addDays,
-  computeMaeMfe,
-  findBarOnOrAfter,
-  resultPctForSide,
-  toDateKey,
-} from "./utils";
+import { computeSignalMetrics } from "./metrics";
+import { resolveSignalStatus } from "./lifecycle";
+import { checkRuleFollowed } from "./rules";
 
 export async function refreshPaperSignalMetrics(): Promise<{
   updated: number;
@@ -34,33 +25,13 @@ export async function refreshPaperSignalMetrics(): Promise<{
 
     const resolved = await resolvePrice(signal.asset);
     const currentPrice = effectivePrice(resolved);
-    const currentResultPct = resultPctForSide(
-      signal.signalType,
-      signal.plannedEntry,
+    const metrics = computeSignalMetrics({
+      signalType: signal.signalType,
+      plannedEntry: signal.plannedEntry,
+      signalDate: signal.signalDate,
+      bars: history.bars,
       currentPrice,
-    );
-
-    const bar7d = findBarOnOrAfter(history.bars, addDays(signal.signalDate, 7));
-    const bar30d = findBarOnOrAfter(
-      history.bars,
-      addDays(signal.signalDate, 30),
-    );
-
-    const result7dPct = bar7d
-      ? resultPctForSide(signal.signalType, signal.plannedEntry, bar7d.close)
-      : null;
-    const result30dPct = bar30d
-      ? resultPctForSide(signal.signalType, signal.plannedEntry, bar30d.close)
-      : null;
-
-    const monitorBars = history.bars.filter(
-      (bar) => bar.date >= toDateKey(signal.signalDate),
-    );
-    const { maePct, mfePct } = computeMaeMfe(
-      signal.signalType,
-      signal.plannedEntry,
-      monitorBars,
-    );
+    });
 
     const ruleFollowed = await checkRuleFollowed(
       signal.signalDate,
@@ -71,18 +42,39 @@ export async function refreshPaperSignalMetrics(): Promise<{
       signal.asset,
     );
 
+    const oppositeSignals = await prisma.paperSignal.findMany({
+      where: {
+        strategyId: signal.strategyId,
+        assetId: signal.assetId,
+        status: { in: ["OPEN", "CLOSED"] },
+        signalDate: { gt: signal.signalDate },
+        id: { not: signal.id },
+      },
+    });
+
+    const hasOppositeSignal = oppositeSignals.some(
+      (other) =>
+        (other.signalType === "BUY" && signal.signalType === "SELL") ||
+        (other.signalType === "SELL" && signal.signalType === "BUY"),
+    );
+
+    const lifecycle = resolveSignalStatus({
+      currentStatus: signal.status,
+      signalDate: signal.signalDate,
+      result30dPct: metrics.result30dPct,
+      now,
+      hasOppositeSignal,
+    });
+
     await prisma.paperSignal.update({
       where: { id: signal.id },
       data: {
-        currentResultPct,
-        result7dPct,
-        result30dPct,
-        maePct,
-        mfePct,
+        ...metrics,
         ruleFollowed,
         lastMonitoredAt: now,
-        status:
-          addDays(signal.signalDate, 90) < now ? "EXPIRED" : signal.status,
+        status: lifecycle.status,
+        closedAt: lifecycle.closedAt ?? signal.closedAt,
+        closeReason: lifecycle.closeReason ?? signal.closeReason,
       },
     });
 
@@ -90,63 +82,4 @@ export async function refreshPaperSignalMetrics(): Promise<{
   }
 
   return { updated };
-}
-
-async function checkRuleFollowed(
-  signalDate: Date,
-  signalType: PaperSignalType,
-  reason: string,
-  strategyType: StrategyType,
-  configJson: string,
-  asset: {
-    id: string;
-    symbol: string;
-    assetType: import("@prisma/client").AssetType;
-    bucket: import("@prisma/client").Bucket;
-    name: string;
-    provider: string | null;
-    providerSymbol: string | null;
-    createdAt: Date;
-  },
-): Promise<boolean> {
-  if (!reason.includes("MA_CROSS")) {
-    return true;
-  }
-
-  const endDate = addDays(signalDate, 3);
-  const history = await fetchPriceHistory(asset, signalDate, endDate);
-  if (history.bars.length < 2) return true;
-
-  const config = {
-    ...getDefaultStrategyConfig(strategyType),
-    ...JSON.parse(configJson),
-  };
-  const strategyDef = getStrategyDefinition(strategyType);
-  const signals = strategyDef.generateSignals(
-    {
-      bars: history.bars,
-      assetId: asset.id,
-      assetSymbol: asset.symbol,
-      initialCapital: 10_000,
-    },
-    config,
-  );
-
-  const signalDay = toDateKey(signalDate);
-  const opposite =
-    signalType === "BUY"
-      ? signals.some(
-          (s) =>
-            s.date === signalDay &&
-            s.side === "SELL" &&
-            s.reason.includes("MA_CROSS"),
-        )
-      : signals.some(
-          (s) =>
-            s.date === signalDay &&
-            s.side === "BUY" &&
-            s.reason.includes("MA_CROSS"),
-        );
-
-  return !opposite;
 }

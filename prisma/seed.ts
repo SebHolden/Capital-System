@@ -199,6 +199,9 @@ async function main() {
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 35);
 
+      const closedSignalDate = new Date();
+      closedSignalDate.setDate(closedSignalDate.getDate() - 45);
+
       await prisma.paperSignal.create({
         data: {
           strategyId: dcaStrategy.id,
@@ -209,6 +212,7 @@ async function main() {
           amountEur: 250,
           reason: "DCA_MONTHLY",
           currentResultPct: 2.5,
+          result1dPct: 0.8,
           result7dPct: 1.2,
           result30dPct: 3.8,
           maePct: -4.2,
@@ -218,7 +222,30 @@ async function main() {
           lastMonitoredAt: new Date(),
         },
       });
-      console.log("Paper signal demo creato.");
+
+      await prisma.paperSignal.create({
+        data: {
+          strategyId: dcaStrategy.id,
+          assetId: btc.id,
+          signalDate: closedSignalDate,
+          signalType: "BUY",
+          plannedEntry: 55000,
+          amountEur: 250,
+          reason: "DCA_MONTHLY",
+          currentResultPct: 4.1,
+          result1dPct: 1.5,
+          result7dPct: 2.8,
+          result30dPct: 5.2,
+          maePct: -3.1,
+          mfePct: 7.4,
+          ruleFollowed: true,
+          status: "CLOSED",
+          closedAt: new Date(),
+          closeReason: "HORIZON_30D",
+          lastMonitoredAt: new Date(),
+        },
+      });
+      console.log("Paper signal demo creati.");
     }
   } catch (error) {
     console.warn(

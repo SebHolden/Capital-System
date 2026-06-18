@@ -1,20 +1,28 @@
 import { NextResponse } from "next/server";
 import { listPaperSignals } from "@/lib/paper-signals";
+import { listPaperSignalsSchema } from "@/lib/paper-signals/schemas";
 
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const strategyId = searchParams.get("strategyId") ?? undefined;
-    const status = searchParams.get("status") as
-      | "OPEN"
-      | "CLOSED"
-      | "EXPIRED"
-      | undefined;
+    const parsed = listPaperSignalsSchema.safeParse({
+      strategyId: searchParams.get("strategyId") ?? undefined,
+      status: searchParams.get("status") ?? undefined,
+    });
+
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Parametri non validi.", code: "PAPER_SIGNALS_VALIDATION_ERROR" },
+        { status: 400 },
+      );
+    }
+
+    const limitRaw = searchParams.get("limit");
+    const limit = limitRaw ? parseInt(limitRaw, 10) : 50;
 
     const signals = await listPaperSignals({
-      strategyId,
-      status,
-      limit: 50,
+      ...parsed.data,
+      limit: Number.isFinite(limit) && limit > 0 ? limit : 50,
     });
 
     return NextResponse.json({ signals });

@@ -49,6 +49,12 @@ export function getPaperMaxMaePct(): number {
   return Number.isFinite(parsed) ? parsed : 15;
 }
 
+export function getPaperPromotionMinRuleFollowedPct(): number {
+  const raw = process.env.PAPER_PROMOTION_MIN_RULE_FOLLOWED_PCT;
+  const parsed = raw ? parseFloat(raw) : 0;
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 export function checkBacktestEligibility(
   latestRun: BacktestRun | null | undefined,
 ): BacktestEligibilityResult {

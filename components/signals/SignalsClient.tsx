@@ -14,12 +14,14 @@ interface SignalRow {
   signalType: string;
   plannedEntry: number;
   currentResultPct: number | null;
+  result1dPct: number | null;
   result7dPct: number | null;
   result30dPct: number | null;
   maePct: number | null;
   mfePct: number | null;
   ruleFollowed: boolean;
   status: string;
+  closeReason: string | null;
   reason: string;
   strategy: { id: string; name: string };
   asset: { symbol: string };
@@ -100,6 +102,7 @@ export function SignalsClient({ initialSignals }: { initialSignals: SignalRow[] 
                   <th className="p-2">Tipo</th>
                   <th className="p-2">Stato</th>
                   <th className="p-2">Current</th>
+                  <th className="p-2">1d</th>
                   <th className="p-2">7d</th>
                   <th className="p-2">30d</th>
                   <th className="p-2">MAE/MFE</th>
@@ -117,11 +120,19 @@ export function SignalsClient({ initialSignals }: { initialSignals: SignalRow[] 
                     <td className="p-2">{s.signalType}</td>
                     <td className="p-2">
                       <Badge variant="muted">{s.status}</Badge>
+                      {s.closeReason && (
+                        <span className="ml-1 text-xs text-slate-500">
+                          {s.closeReason}
+                        </span>
+                      )}
                     </td>
                     <td className="p-2">
                       {s.currentResultPct !== null
                         ? formatPct(s.currentResultPct)
                         : "—"}
+                    </td>
+                    <td className="p-2">
+                      {s.result1dPct !== null ? formatPct(s.result1dPct) : "—"}
                     </td>
                     <td className="p-2">
                       {s.result7dPct !== null ? formatPct(s.result7dPct) : "—"}

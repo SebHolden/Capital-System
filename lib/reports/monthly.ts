@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { getJournalQualitySummary } from "@/lib/journal";
 import { getPortfolioSummary } from "@/lib/portfolio";
 import { fetchPriceHistory } from "@/lib/prices/history";
+import { getPaperStrategyRankings } from "@/lib/paper-signals";
 import { getUserSettings } from "@/lib/security";
 import { findImpulsiveTrades } from "./aggregators";
 import { computeDecisionQualityScore } from "./decisionQuality";
@@ -68,27 +69,23 @@ async function loadStrategyPerformance(): Promise<{
   best: StrategyPerformanceRow[];
   worst: StrategyPerformanceRow[];
 }> {
-  const signals = await prisma.paperSignal.findMany({
-    where: { result30dPct: { not: null } },
-    include: {
-      strategy: { select: { id: true, name: true, status: true } },
-    },
-    orderBy: { result30dPct: "desc" },
-    take: 20,
-  });
+  const rankings = await getPaperStrategyRankings();
 
-  const fromSignals: StrategyPerformanceRow[] = signals.map((s) => ({
-    strategyId: s.strategyId,
-    strategyName: s.strategy.name,
-    status: s.strategy.status,
-    metric: s.result30dPct ?? 0,
-    metricLabel: "result30dPct",
-  }));
+  if (rankings.length >= 2) {
+    const rows: StrategyPerformanceRow[] = rankings.map((r) => ({
+      strategyId: r.strategyId,
+      strategyName: r.strategyName,
+      status: r.status,
+      metric: r.avg30dPct ?? 0,
+      metricLabel: "avg30dPct",
+      signalCount: r.signalCount,
+      avg30dPct: r.avg30dPct,
+      ruleFollowedPct: r.ruleFollowedPct,
+    }));
 
-  if (fromSignals.length >= 2) {
     return {
-      best: fromSignals.slice(0, 3),
-      worst: [...fromSignals].reverse().slice(0, 3),
+      best: rows.slice(0, 3),
+      worst: [...rows].reverse().slice(0, 3),
     };
   }
 
@@ -109,6 +106,9 @@ async function loadStrategyPerformance(): Promise<{
         status: run.strategy.status,
         metric: metrics.totalReturnPct ?? 0,
         metricLabel: "backtestReturnPct",
+        signalCount: 0,
+        avg30dPct: null,
+        ruleFollowedPct: null,
       });
     } catch {
       // skip invalid metrics

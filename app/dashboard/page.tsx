@@ -6,11 +6,15 @@ import { Badge } from "@/components/ui/Badge";
 import { Card, CardTitle, CardValue } from "@/components/ui/Card";
 import { RiskBadge } from "@/components/ui/RiskBadge";
 import { getBucketAllocation, getPortfolioSummary } from "@/lib/portfolio";
+import { getPaperStrategyRankings } from "@/lib/paper-signals";
 import { bucketLabel, formatCurrency, formatPct } from "@/lib/utils";
 
 export default async function DashboardPage() {
-  const summary = await getPortfolioSummary();
-  const allocation = await getBucketAllocation();
+  const [summary, allocation, paperRankings] = await Promise.all([
+    getPortfolioSummary(),
+    getBucketAllocation(),
+    getPaperStrategyRankings(),
+  ]);
 
   const {
     portfolio,
@@ -30,6 +34,11 @@ export default async function DashboardPage() {
 
   const dailyPnl = riskMetrics.daily.pnlAmount;
   const monthlyPnl = riskMetrics.monthly.pnlAmount;
+
+  const paperActiveCount = paperRankings.filter(
+    (r) => r.status === "PAPER_ACTIVE",
+  ).length;
+  const topPaper = paperRankings[0] ?? null;
 
   return (
     <div className="space-y-6">
@@ -73,6 +82,29 @@ export default async function DashboardPage() {
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Card>
+          <CardTitle>Paper trading</CardTitle>
+          <CardValue>{paperActiveCount} attive</CardValue>
+          <p className="mt-1 text-sm text-slate-400">
+            {topPaper ? (
+              <>
+                Top: {topPaper.strategyName}{" "}
+                {topPaper.avg30dPct !== null
+                  ? formatPct(topPaper.avg30dPct)
+                  : "—"}{" "}
+                avg 30d
+              </>
+            ) : (
+              "Nessun dato paper"
+            )}
+          </p>
+          <Link
+            href="/strategies"
+            className="mt-2 inline-block text-sm text-blue-400 hover:underline"
+          >
+            Vai a Strategie
+          </Link>
+        </Card>
         <Card>
           <CardTitle>Patrimonio totale</CardTitle>
           <CardValue>{formatCurrency(portfolio.totalValue)}</CardValue>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardTitle } from "@/components/ui/Card";
 import { formatPct } from "@/lib/utils";
@@ -30,14 +31,34 @@ interface PaperSignalRow {
   signalType: string;
   plannedEntry: number;
   currentResultPct: number | null;
+  result1dPct: number | null;
   result7dPct: number | null;
   result30dPct: number | null;
   maePct: number | null;
   mfePct: number | null;
   ruleFollowed: boolean;
   status: string;
+  closeReason: string | null;
   strategy: { name: string };
   asset: { symbol: string };
+}
+
+interface PaperRankingRow {
+  strategyId: string;
+  strategyName: string;
+  status: string;
+  signalCount: number;
+  openCount: number;
+  closedCount: number;
+  expiredCount: number;
+  avgCurrentPct: number | null;
+  avg1dPct: number | null;
+  avg7dPct: number | null;
+  avg30dPct: number | null;
+  worstMaePct: number | null;
+  ruleFollowedPct: number | null;
+  promotionReady: boolean;
+  promotionBlockers: string[];
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -66,12 +87,15 @@ function statusClass(status: string): string {
 export function StrategiesClient({
   initialStrategies,
   initialSignals,
+  initialPaperRankings,
 }: {
   initialStrategies: StrategyRow[];
   initialSignals: PaperSignalRow[];
+  initialPaperRankings: PaperRankingRow[];
 }) {
   const [strategies, setStrategies] = useState(initialStrategies);
   const [signals, setSignals] = useState(initialSignals);
+  const [paperRankings, setPaperRankings] = useState(initialPaperRankings);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -82,7 +106,10 @@ export function StrategiesClient({
     ]);
     const strategiesData = await strategiesRes.json();
     const signalsData = await signalsRes.json();
-    if (strategiesRes.ok) setStrategies(strategiesData.strategies);
+    if (strategiesRes.ok) {
+      setStrategies(strategiesData.strategies);
+      setPaperRankings(strategiesData.paperRankings ?? []);
+    }
     if (signalsRes.ok) setSignals(signalsData.signals);
   }
 
@@ -257,6 +284,88 @@ export function StrategiesClient({
       </Card>
 
       <Card>
+        <CardTitle>Performance paper per strategia</CardTitle>
+        {paperRankings.length === 0 ? (
+          <p className="mt-3 text-sm text-slate-500">
+            Nessun dato paper. Attiva paper su una strategia e genera segnali.
+          </p>
+        ) : (
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-700 text-left text-slate-500">
+                  <th className="pb-2 pr-4">Strategia</th>
+                  <th className="pb-2 pr-4">Status</th>
+                  <th className="pb-2 pr-4">Segnali</th>
+                  <th className="pb-2 pr-4">1d</th>
+                  <th className="pb-2 pr-4">7d</th>
+                  <th className="pb-2 pr-4">30d</th>
+                  <th className="pb-2 pr-4">Worst MAE</th>
+                  <th className="pb-2 pr-4">Rule %</th>
+                  <th className="pb-2">Promozione</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paperRankings.map((ranking) => (
+                  <tr key={ranking.strategyId} className="border-b border-slate-800">
+                    <td className="py-2 pr-4 text-slate-300">
+                      {ranking.strategyName}
+                    </td>
+                    <td className={`py-2 pr-4 ${statusClass(ranking.status)}`}>
+                      {STATUS_LABELS[ranking.status] ?? ranking.status}
+                    </td>
+                    <td className="py-2 pr-4 text-slate-400">
+                      {ranking.signalCount} ({ranking.openCount}o /{" "}
+                      {ranking.closedCount}c / {ranking.expiredCount}e)
+                    </td>
+                    <td className="py-2 pr-4 text-slate-400">
+                      {ranking.avg1dPct !== null
+                        ? formatPct(ranking.avg1dPct)
+                        : "—"}
+                    </td>
+                    <td className="py-2 pr-4 text-slate-400">
+                      {ranking.avg7dPct !== null
+                        ? formatPct(ranking.avg7dPct)
+                        : "—"}
+                    </td>
+                    <td className="py-2 pr-4 text-slate-400">
+                      {ranking.avg30dPct !== null
+                        ? formatPct(ranking.avg30dPct)
+                        : "—"}
+                    </td>
+                    <td className="py-2 pr-4 text-red-400">
+                      {ranking.worstMaePct !== null
+                        ? formatPct(ranking.worstMaePct)
+                        : "—"}
+                    </td>
+                    <td className="py-2 pr-4 text-slate-400">
+                      {ranking.ruleFollowedPct !== null
+                        ? `${ranking.ruleFollowedPct.toFixed(0)}%`
+                        : "—"}
+                    </td>
+                    <td className="py-2">
+                      {ranking.promotionReady ? (
+                        <Badge variant="success">Pronta</Badge>
+                      ) : ranking.promotionBlockers.length > 0 ? (
+                        <span
+                          className="text-xs text-amber-400"
+                          title={ranking.promotionBlockers.join(" ")}
+                        >
+                          {ranking.promotionBlockers[0]}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-slate-500">—</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      <Card>
         <CardTitle>Segnali paper</CardTitle>
         {signals.length === 0 ? (
           <p className="mt-3 text-sm text-slate-500">
@@ -271,7 +380,9 @@ export function StrategiesClient({
                   <th className="pb-2 pr-4">Strategia</th>
                   <th className="pb-2 pr-4">Asset</th>
                   <th className="pb-2 pr-4">Tipo</th>
+                  <th className="pb-2 pr-4">Stato</th>
                   <th className="pb-2 pr-4">Current</th>
+                  <th className="pb-2 pr-4">1d</th>
                   <th className="pb-2 pr-4">7d</th>
                   <th className="pb-2 pr-4">30d</th>
                   <th className="pb-2 pr-4">MAE</th>
@@ -295,8 +406,21 @@ export function StrategiesClient({
                       {signal.signalType}
                     </td>
                     <td className="py-2 pr-4 text-slate-400">
+                      <Badge variant="muted">{signal.status}</Badge>
+                      {signal.closeReason && (
+                        <span className="ml-1 text-xs text-slate-500">
+                          {signal.closeReason}
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-2 pr-4 text-slate-400">
                       {signal.currentResultPct !== null
                         ? formatPct(signal.currentResultPct)
+                        : "—"}
+                    </td>
+                    <td className="py-2 pr-4 text-slate-400">
+                      {signal.result1dPct !== null
+                        ? formatPct(signal.result1dPct)
                         : "—"}
                     </td>
                     <td className="py-2 pr-4 text-slate-400">

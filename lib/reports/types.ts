@@ -115,6 +115,9 @@ export interface StrategyPerformanceRow {
   status: string;
   metric: number;
   metricLabel: string;
+  signalCount: number;
+  avg30dPct: number | null;
+  ruleFollowedPct: number | null;
 }
 
 export interface MonthlyReportData {

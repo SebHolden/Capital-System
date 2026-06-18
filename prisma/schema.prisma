@@ -393,12 +393,15 @@ model PaperSignal {
   quantity         Float?
   reason           String
   currentResultPct Float?
+  result1dPct      Float?
   result7dPct      Float?
   result30dPct     Float?
   maePct           Float?
   mfePct           Float?
   ruleFollowed     Boolean           @default(true)
   status           PaperSignalStatus @default(OPEN)
+  closedAt         DateTime?
+  closeReason      String?
   lastMonitoredAt  DateTime?
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt

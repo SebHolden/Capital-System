@@ -152,3 +152,8 @@ export { generatePaperSignals } from "./generate";
 export { refreshPaperSignalMetrics } from "./monitor";
 export { evaluatePromotions } from "./promotion";
 export { checkBacktestEligibility } from "./eligibility";
+export { getPaperStrategyRankings } from "./rankings";
+export type { PaperStrategyRanking } from "./rankings";
+export { computeSignalMetrics } from "./metrics";
+export { resolveSignalStatus } from "./lifecycle";
+export type { SignalMetrics } from "./metrics";

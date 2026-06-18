@@ -373,7 +373,11 @@ export function ReportsClient({
               <ul className="mt-2 space-y-1 text-sm text-slate-300">
                 {monthly.strategies.best.map((s) => (
                   <li key={s.strategyId}>
-                    {s.strategyName}: {formatPct(s.metric)} ({s.metricLabel})
+                    {s.strategyName}: {formatPct(s.metric)} ({s.metricLabel}
+                    {s.signalCount > 0
+                      ? `, ${s.signalCount} segnali, rule ${s.ruleFollowedPct?.toFixed(0) ?? "—"}%`
+                      : ""}
+                    )
                   </li>
                 ))}
               </ul>
@@ -388,7 +392,11 @@ export function ReportsClient({
               <ul className="mt-2 space-y-1 text-sm text-slate-300">
                 {monthly.strategies.worst.map((s) => (
                   <li key={s.strategyId}>
-                    {s.strategyName}: {formatPct(s.metric)} ({s.metricLabel})
+                    {s.strategyName}: {formatPct(s.metric)} ({s.metricLabel}
+                    {s.signalCount > 0
+                      ? `, ${s.signalCount} segnali, rule ${s.ruleFollowedPct?.toFixed(0) ?? "—"}%`
+                      : ""}
+                    )
                   </li>
                 ))}
               </ul>

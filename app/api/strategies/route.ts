@@ -1,10 +1,16 @@
 import { NextResponse } from "next/server";
-import { listStrategiesWithBacktests } from "@/lib/paper-signals";
+import {
+  getPaperStrategyRankings,
+  listStrategiesWithBacktests,
+} from "@/lib/paper-signals";
 
 export async function GET() {
   try {
-    const strategies = await listStrategiesWithBacktests();
-    return NextResponse.json({ strategies });
+    const [strategies, paperRankings] = await Promise.all([
+      listStrategiesWithBacktests(),
+      getPaperStrategyRankings(),
+    ]);
+    return NextResponse.json({ strategies, paperRankings });
   } catch (error) {
     console.error(error);
     return NextResponse.json(

@@ -7,6 +7,7 @@ import {
   getStrategyDefinition,
 } from "@/lib/strategies";
 import { addDays, mapSignalType, toDateKey } from "./utils";
+import { closeOppositeOpenSignals } from "./lifecycle";
 
 const LOOKBACK_DAYS = 120;
 
@@ -95,6 +96,13 @@ export async function generatePaperSignals(): Promise<{
           },
         });
         created += 1;
+
+        await closeOppositeOpenSignals({
+          strategyId: strategy.id,
+          assetId: asset.id,
+          newSignalType: signalType,
+          now: new Date(),
+        });
 
         await writeAuditLog("PAPER_SIGNAL_GENERATED", "PaperSignal", {
           strategyId: strategy.id,
