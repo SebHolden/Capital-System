@@ -1,0 +1,398 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum ExecutionMode {
+  MOCK
+  PAPER
+  LIVE
+}
+
+enum Bucket {
+  CASH
+  CORE
+  GROWTH
+  SPECULATIVE
+  HEDGE
+}
+
+enum AssetType {
+  ETF
+  STOCK
+  BOND
+  CRYPTO
+  CASH
+  OTHER
+}
+
+enum OrderSide {
+  BUY
+  SELL
+}
+
+enum OrderStatus {
+  PENDING
+  SIMULATED
+  EXECUTED
+  REJECTED
+  CANCELLED
+}
+
+enum RiskLevel {
+  GREEN
+  YELLOW
+  ORANGE
+  RED
+  BLACK
+}
+
+enum ExecutionStatus {
+  FILLED
+  REJECTED
+  PARTIAL
+}
+
+enum StrategyType {
+  DCA_MONTHLY
+  REBALANCE_MONTHLY
+  MOVING_AVERAGE_CROSS
+  MOMENTUM
+  BUY_THE_DIP
+  VOLATILITY_FILTER
+  CORE_SATELLITE
+}
+
+enum BacktestStatus {
+  COMPLETED
+  FAILED
+}
+
+enum StrategyStatus {
+  DRAFT
+  BACKTESTED
+  PAPER_ACTIVE
+  PROMOTED
+  REJECTED
+}
+
+enum PaperSignalStatus {
+  OPEN
+  CLOSED
+  EXPIRED
+}
+
+enum PaperSignalType {
+  BUY
+  SELL
+  REBALANCE
+  HOLD
+}
+
+model UserSettings {
+  id                  String        @id @default("default")
+  hypotheticalCapital Float         @default(10000)
+  cashBalance         Float         @default(10000)
+  executionMode       ExecutionMode @default(MOCK)
+  killSwitchActive    Boolean       @default(false)
+  maxPositionPct      Float         @default(25)
+  maxBucketPct        Float         @default(40)
+  maxDailyOrders      Int           @default(3)
+  maxOrderAmount      Float         @default(1000)
+  minCashReserve         Float         @default(1000)
+  maxCryptoPct           Float         @default(15)
+  maxDailyLossPct        Float         @default(2)
+  maxMonthlyLossPct      Float         @default(5)
+  maxExperimentalPct     Float         @default(5)
+  maxDrawdownPct         Float         @default(15)
+  peakPortfolioValue     Float         @default(10000)
+  dailyBaselineValue     Float         @default(10000)
+  dailyBaselineDate      DateTime      @default(now())
+  monthlyBaselineValue   Float         @default(10000)
+  monthlyBaselineKey     String        @default("2026-01")
+  tradingWindowEnabled   Boolean       @default(true)
+  tradingStartHour       Int           @default(9)
+  tradingEndHour         Int           @default(18)
+  tradingTimezone        String        @default("Europe/Rome")
+  maxLiveOrderAmount     Float         @default(500)
+  maxDailyLiveAmount     Float         @default(2000)
+  maxMonthlyLiveAmount   Float         @default(10000)
+  maxSingleCryptoPct     Float         @default(5)
+  leverageAllowed        Boolean       @default(false)
+  maxAssetPumpPct        Float         @default(15)
+  assetPumpLookbackDays  Int           @default(7)
+  maxAssetVolatilityPct  Float         @default(80)
+  revengeTradingLossPct  Float         @default(1)
+  experimentalCapital    Float         @default(0)
+  experimentalCashBalance Float        @default(0)
+  updatedAt              DateTime      @updatedAt
+}
+
+model Asset {
+  id             String    @id @default(cuid())
+  symbol         String    @unique
+  name           String
+  assetType      AssetType @default(ETF)
+  bucket         Bucket    @default(CORE)
+  provider       String?
+  providerSymbol String?
+  createdAt      DateTime  @default(now())
+
+  positions      Position[]
+  priceSnapshots PriceSnapshot[]
+  orderIntents   OrderIntent[]
+  backtestRuns   BacktestRun[]
+  paperSignals   PaperSignal[]
+  primaryStrategies Strategy[] @relation("StrategyPrimaryAsset")
+}
+
+model Position {
+  id        String   @id @default(cuid())
+  assetId   String
+  quantity  Float
+  avgPrice  Float
+  bucket    Bucket
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([assetId])
+}
+
+model PriceSnapshot {
+  id         String   @id @default(cuid())
+  assetId    String
+  price      Float
+  source     String   @default("manual")
+  status     String   @default("fresh")
+  currency   String   @default("EUR")
+  capturedAt DateTime @default(now())
+
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([assetId])
+  @@index([capturedAt])
+}
+
+model TradeJournal {
+  id                String   @id @default(cuid())
+  title             String
+  thesis            String
+  risks             String
+  invalidation      String
+  emotionalState    String
+  timeHorizon       String   @default("")
+  maxAcceptableLoss Float    @default(0)
+  exitRule          String   @default("")
+  emotionScore      Int      @default(5)
+  confidenceScore   Int      @default(5)
+  planned           Boolean  @default(false)
+  qualityScore      Float    @default(0)
+  isComplete        Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  orderIntents OrderIntent[]
+}
+
+model OrderIntent {
+  id              String         @id @default(cuid())
+  journalId       String?
+  assetId         String
+  side            OrderSide
+  quantity        Float
+  limitPrice      Float?
+  status          OrderStatus    @default(PENDING)
+  idempotencyKey  String?        @unique
+  executionMode   ExecutionMode?
+  createdAt       DateTime       @default(now())
+
+  journal       TradeJournal?  @relation(fields: [journalId], references: [id], onDelete: SetNull)
+  asset         Asset          @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  riskDecisions RiskDecision[]
+  executionLogs ExecutionLog[]
+
+  @@index([assetId])
+  @@index([journalId])
+}
+
+model RiskDecision {
+  id            String    @id @default(cuid())
+  orderIntentId String
+  level         RiskLevel
+  reasons       String
+  blocked       Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+
+  orderIntent OrderIntent @relation(fields: [orderIntentId], references: [id], onDelete: Cascade)
+
+  @@index([orderIntentId])
+}
+
+model ExecutionLog {
+  id             String          @id @default(cuid())
+  orderIntentId  String
+  mode           ExecutionMode
+  status         ExecutionStatus
+  fillPrice      Float?
+  message        String
+  brokerOrderId  String?
+  idempotencyKey String?
+  costBasisPerUnit Float?
+  realizedPnl      Float?
+  createdAt      DateTime        @default(now())
+
+  orderIntent OrderIntent @relation(fields: [orderIntentId], references: [id], onDelete: Cascade)
+
+  @@index([orderIntentId])
+  @@index([idempotencyKey])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  action    String
+  entity    String
+  entityId  String?
+  payload   String
+  createdAt DateTime @default(now())
+
+  @@index([entity])
+  @@index([createdAt])
+}
+
+model BrokerAccountSnapshot {
+  id          String        @id @default(cuid())
+  brokerName  String
+  mode        ExecutionMode
+  accountId   String
+  equity      Float
+  cash        Float
+  buyingPower Float?
+  currency    String        @default("USD")
+  payloadJson String        @default("{}")
+  capturedAt  DateTime      @default(now())
+
+  @@index([mode])
+  @@index([capturedAt])
+}
+
+model PortfolioSnapshot {
+  id              String   @id @default(cuid())
+  snapshotDate    String   @unique
+  totalValue      Float
+  cashBalance     Float
+  investedValue   Float
+  dailyPnlPct     Float
+  monthlyPnlPct   Float
+  riskLevel       String
+  payloadJson     String   @default("{}")
+  createdAt       DateTime @default(now())
+}
+
+model MonthlyReport {
+  id                   String   @id @default(cuid())
+  monthKey             String   @unique
+  decisionQualityScore Float
+  payloadJson          String
+  generatedAt          DateTime @default(now())
+}
+
+model Strategy {
+  id              String         @id @default(cuid())
+  name            String
+  description     String         @default("")
+  type            StrategyType
+  configJson      String         @default("{}")
+  benchmarkSymbol String?
+  status          StrategyStatus @default(DRAFT)
+  primaryAssetId  String?
+  paperActiveAt   DateTime?
+  promotedAt      DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  primaryAsset Asset?         @relation("StrategyPrimaryAsset", fields: [primaryAssetId], references: [id], onDelete: SetNull)
+  backtestRuns BacktestRun[]
+  paperSignals PaperSignal[]
+
+  @@index([status])
+  @@index([primaryAssetId])
+}
+
+model BacktestRun {
+  id              String         @id @default(cuid())
+  strategyId      String
+  assetId         String
+  startDate       DateTime
+  endDate         DateTime
+  initialCapital  Float
+  commissionBps   Float          @default(10)
+  slippageBps     Float          @default(10)
+  dataSource      String         @default("live")
+  metricsJson     String         @default("{}")
+  benchmarkJson   String?
+  equityCurveJson String         @default("[]")
+  status          BacktestStatus @default(COMPLETED)
+  errorMessage    String?
+  createdAt       DateTime       @default(now())
+
+  strategy Strategy        @relation(fields: [strategyId], references: [id], onDelete: Cascade)
+  asset    Asset           @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  trades   BacktestTrade[]
+
+  @@index([strategyId])
+  @@index([assetId])
+  @@index([createdAt])
+}
+
+model BacktestTrade {
+  id            String    @id @default(cuid())
+  backtestRunId String
+  date          DateTime
+  side          OrderSide
+  quantity      Float
+  price         Float
+  fees          Float     @default(0)
+  reason        String
+
+  backtestRun BacktestRun @relation(fields: [backtestRunId], references: [id], onDelete: Cascade)
+
+  @@index([backtestRunId])
+}
+
+model PaperSignal {
+  id               String            @id @default(cuid())
+  strategyId       String
+  assetId          String
+  signalDate       DateTime
+  signalType       PaperSignalType
+  plannedEntry     Float
+  amountEur        Float?
+  quantity         Float?
+  reason           String
+  currentResultPct Float?
+  result7dPct      Float?
+  result30dPct     Float?
+  maePct           Float?
+  mfePct           Float?
+  ruleFollowed     Boolean           @default(true)
+  status           PaperSignalStatus @default(OPEN)
+  lastMonitoredAt  DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  strategy Strategy @relation(fields: [strategyId], references: [id], onDelete: Cascade)
+  asset    Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@unique([strategyId, assetId, signalDate, reason])
+  @@index([strategyId])
+  @@index([assetId])
+  @@index([status])
+  @@index([signalDate])
+}
