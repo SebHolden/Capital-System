@@ -48,9 +48,16 @@ In **Project Settings → Environment Variables**, aggiungi:
 1. Clic **Deploy**
 2. Il build esegue automaticamente:
    - `prisma generate`
-   - `prisma migrate deploy` (crea le tabelle)
    - `next build`
-3. Dopo il deploy riuscito, **seed solo su DB vuoto** (una tantum):
+3. **Prima del primo deploy**, applica le migrazioni sul database (una tantum):
+
+   ```bash
+   npx prisma migrate deploy
+   ```
+
+   Su Neon imposta `DIRECT_DATABASE_URL` (host senza `-pooler`) per evitare timeout del lock advisory.
+
+4. Dopo il deploy riuscito, **seed solo su DB vuoto** (una tantum):
 
    ```bash
    # Da locale, con DATABASE_URL del DB di produzione
