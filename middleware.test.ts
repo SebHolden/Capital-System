@@ -1,7 +1,10 @@
 import { describe, expect, it, afterEach } from "vitest";
 import { middleware } from "./middleware";
 
-function makeRequest(authHeader?: string): Parameters<typeof middleware>[0] {
+function makeRequest(
+  authHeader?: string,
+  pathname = "/",
+): Parameters<typeof middleware>[0] {
   const headers = new Headers();
   if (authHeader) {
     headers.set("authorization", authHeader);
@@ -9,6 +12,9 @@ function makeRequest(authHeader?: string): Parameters<typeof middleware>[0] {
   return {
     headers: {
       get: (name: string) => headers.get(name),
+    },
+    nextUrl: {
+      pathname,
     },
   } as Parameters<typeof middleware>[0];
 }
@@ -53,6 +59,14 @@ describe("middleware auth", () => {
     process.env.APP_PASSWORD = "secret";
 
     const response = middleware(makeRequest(basicAuth("secret")));
+    expect(response.status).toBe(200);
+  });
+
+  it("bypasses auth for /api/health", () => {
+    process.env.NODE_ENV = "production";
+    delete process.env.APP_PASSWORD;
+
+    const response = middleware(makeRequest(undefined, "/api/health"));
     expect(response.status).toBe(200);
   });
 });

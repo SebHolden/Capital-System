@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { fetchCryptoQuotesProxy } from "@/lib/prices";
+import { logError } from "@/lib/logger";
 
 const querySchema = z.object({
   symbols: z.string().min(1),
@@ -28,7 +29,7 @@ export async function GET(request: Request) {
     const quotes = await fetchCryptoQuotesProxy(symbols);
     return NextResponse.json({ quotes });
   } catch (error) {
-    console.error(error);
+    logError("Request failed", error);
     return NextResponse.json(
       { error: "CoinGecko request failed", code: "CRYPTO_PRICE_ERROR" },
       { status: 502 },

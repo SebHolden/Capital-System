@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { deletePosition, updatePosition } from "@/lib/portfolio";
 import { writeAuditLog, mapMutatingSecurityError, verifyMutatingRequest } from "@/lib/security";
+import { logError } from "@/lib/logger";
 
 const updatePositionSchema = z.object({
   quantity: z.number().positive().optional(),
@@ -34,7 +35,7 @@ export async function PATCH(
   } catch (error) {
     const securityError = mapMutatingSecurityError(error);
     if (securityError) return securityError;
-    console.error(error);
+    logError("Request failed", error);
     return NextResponse.json(
       { error: "Errore nell'aggiornamento della posizione.", code: "POSITION_UPDATE_ERROR" },
       { status: 500 },
@@ -56,7 +57,7 @@ export async function DELETE(
   } catch (error) {
     const securityError = mapMutatingSecurityError(error);
     if (securityError) return securityError;
-    console.error(error);
+    logError("Request failed", error);
     return NextResponse.json(
       { error: "Errore nell'eliminazione della posizione.", code: "POSITION_DELETE_ERROR" },
       { status: 500 },

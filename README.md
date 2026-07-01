@@ -9,7 +9,7 @@ Dashboard personale per gestione capitale, rischio, journal decisionale e simula
 ## Stack
 
 - Next.js App Router + TypeScript
-- Prisma + SQLite (locale)
+- Prisma + PostgreSQL (Neon / Vercel Postgres consigliati; SQLite non supportato su Vercel)
 - Tailwind CSS
 - Zod (validazione API)
 - Recharts (grafici)
@@ -46,6 +46,7 @@ Apri [http://localhost:3000](http://localhost:3000) — redirect automatico a `/
 | `npm run db:reset` | Reset DB + seed |
 | `npm run paper-signals:run` | Pipeline segnali paper (scheduler) |
 | `npm run reports:daily` | Snapshot report giornaliero + `PortfolioSnapshot` |
+| `npm run autopilot:daily` | Workflow autopilot + Daily Decision Brief |
 | `npm run test` | Vitest (risk, reports, live limits, architecture guard) |
 | `npm run architecture:check` | Verifica automatica regole in `docs/architecture-rules.md` |
 
@@ -73,6 +74,7 @@ lib/
   backtesting/   # Runner backtest, metriche, benchmark
   strategies/    # Definizioni strategie
   paper-signals/ # Generazione e monitor segnali paper
+  autopilot/     # Scheduler giornaliero + decision brief (paper only)
 
 prisma/
   schema.prisma  # 15 modelli dati
@@ -343,6 +345,73 @@ PAPER_PROMOTION_MIN_WIN_RATE_PCT=40
 Il live trading resta disabilitato (`ENABLE_LIVE_TRADING=false`, `EXECUTION_MODE=mock`).
 Nessuna strategia può chiamare direttamente il broker — `lib/paper-signals/` resta signal-only.
 
+## Historical Data Quality + Walk-Forward Validation
+
+Il sistema valida la qualità dei dati storici e applica walk-forward validation prima di attivare strategie in paper:
+
+### Data Quality Layer (`lib/data-quality/`)
+
+- **Gap detection** — identifica barre mancanti nella serie storica
+- **Outlier detection** — rileva valori anomali tramite z-score
+- **Completeness scoring** — rapporto tra giorni attesi e disponibili
+- **Quality score** (0-100) — penalizza dati sintetici, gap, outlier, insufficienza
+
+Ogni `PaperSignal` ora traccia:
+- `dataQualityScore` — punteggio qualità dati usati per valutazione
+- `dataSource` — sorgente dati (`database`, `coingecko`, `finnhub`, `synthetic`)
+- `dataWarnings` — avvisi specifici (JSON array)
+
+### Walk-Forward Validation (`lib/paper-signals/walkforward.ts`)
+
+Prima di attivare una strategia in paper trading:
+
+1. **Walk-forward test** — rolling train/test su 2 anni di dati
+2. **Walk-forward score** — rapporto OOS / IS return (target ≥ 60%)
+3. **Overfit score** — degradazione IS → OOS (target ≤ 50%)
+4. **Data quality check** — dati sufficienti e non sintetici
+
+Ogni `Strategy` ora traccia:
+- `walkForwardValidatedAt` — data ultima validazione
+- `walkForwardScore` — rapporto rendimento OOS/IS
+- `overfitScore` — indicatore overfitting
+- `dataQualityAvgScore` — media qualità dati segnali
+
+### Overfit Analysis (`lib/backtesting/overfit.ts`)
+
+Analisi dettagliata del rischio overfitting:
+- **Degradation %** — differenza IS vs OOS
+- **Consistency score** — stabilità tra fold
+- **Fold stability** — % fold con OOS positivo
+- **Recommendation** — `SAFE` / `CAUTION` / `HIGH_RISK` / `REJECT`
+
+### UI Indicators
+
+- `/signals` — colonna "Data Q." con score e sorgente dati
+- `/strategies` — colonna "Data Q." nella leaderboard con count segnali sintetici
+- Promotion blockers includono warning su dati sintetici o qualità bassa
+
+### Variabili env (opzionali)
+
+```env
+MIN_DATA_QUALITY_SCORE=60
+MIN_BARS_FOR_EVALUATION=30
+WALKFORWARD_MIN_SCORE=0.6
+WALKFORWARD_TRAIN_BARS=180
+WALKFORWARD_TEST_BARS=60
+WALKFORWARD_STEP_BARS=30
+WALKFORWARD_REQUIRED_FOR_PAPER=true
+MAX_OVERFIT_SCORE_FOR_PAPER=0.6
+MIN_DATA_QUALITY_FOR_PAPER=50
+```
+
+### Garanzie
+
+- Walk-forward validation è gate opzionale (default attivo)
+- Segnali con dati sintetici vengono flaggati come "non affidabili"
+- Strategie con overfit alto non possono essere promosse
+- Nessuna strategia può bypassare il risk gate
+- Live trading resta disabilitato
+
 ## Milestone 9 — Live trading protetto
 
 Esecuzione LIVE su Alpaca con doppio gate env e conferme UI:
@@ -402,9 +471,82 @@ npm run reports:daily
 
 Windows Task Scheduler: azione `npm run reports:daily` nella cartella progetto, trigger giornaliero (es. 23:00). Linux/macOS: `cron` con `0 23 * * * cd /path/to/project && npm run reports:daily`.
 
+## Autopilot Scheduler + Daily Decision Brief
+
+Il sistema può monitorare, valutare e riassumere automaticamente, ma **non può tradare soldi veri da solo**.
+
+### Cosa fa automaticamente
+
+- Aggiorna prezzi asset (CoinGecko, Finnhub)
+- Genera segnali paper da strategie `PAPER_ACTIVE`
+- Valuta metriche segnali (1d / 7d / 30d, MAE / MFE)
+- Aggiorna score e ranking strategie
+- Promuove o degrada strategie in paper
+- Genera un **Daily Decision Brief** con le 3 azioni più importanti
+
+### Cosa NON fa
+
+- Nessuna esecuzione live automatica
+- Nessun ordine con soldi veri senza approvazione manuale
+- Nessun bypass di Risk Gate, Journal, Execution Mode Check o Audit Log
+- I segnali paper **non sono ordini**
+- Strategia `PROMOTED` **non autorizza** esecuzione live
+
+### Classificazione azioni suggerite
+
+Ogni azione nel brief è classificata come:
+
+| Classificazione | Significato |
+|-----------------|-------------|
+| `DO_NOTHING` | Condizioni non favorevoli — nessuna operazione |
+| `WATCH` | Solo osservare (es. strategia aggressiva, rischio YELLOW) |
+| `REVIEW_MANUALLY` | Revisione manuale richiesta (es. promozione paper) |
+| `PAPER_ONLY` | Solo monitoraggio paper — nessun ordine |
+| `MANUAL_APPROVAL_REQUIRED` | Puoi approvare manualmente se risk GREEN |
+
+### API
+
+| Endpoint | Metodo | Descrizione |
+|----------|--------|-------------|
+| `/api/autopilot/daily-brief` | GET | Ultimo decision brief (o snapshot corrente) |
+| `/api/autopilot/run-daily` | POST | Esegue workflow giornaliero (CSRF richiesto) |
+
+### UI
+
+Pagina `/autopilot` con:
+
+- Stato sistema (execution mode, kill switch, live disabled)
+- Cosa è successo / cosa richiede attenzione / cosa NON fare
+- Azioni suggerite (max 3) con badge classificazione
+- Avvisi di sicurezza espliciti
+
+### Scheduler
+
+```bash
+npm run autopilot:daily
+```
+
+Windows Task Scheduler o cron giornaliero (es. 18:00 dopo chiusura mercati EU).
+
+**Garanzie:** `ENABLE_LIVE_TRADING=false` e `EXECUTION_MODE=mock` restano i default. Il modulo `lib/autopilot/` è vincolato dalle stesse regole architetturali dei paper signals (no broker, no execution).
+
+## Deployment readiness
+
+Per un deploy **privato in staging** (password, `EXECUTION_MODE=mock`, `ENABLE_LIVE_TRADING=false`, niente capitale reale), segui la checklist completa in [`docs/deployment-readiness.md`](docs/deployment-readiness.md).
+
+**Deploy su Vercel:** guida passo-passo in [`docs/deployment-vercel.md`](docs/deployment-vercel.md) (PostgreSQL obbligatorio, variabili env, primo seed).
+
+Riepilogo minimo:
+
+- CI verde: `typecheck`, `lint`, `test`, `build`, `architecture:check`
+- `APP_PASSWORD` e `APP_BASE_URL` obbligatori in production
+- `npx prisma migrate deploy` su staging/produzione (non `db:reset`)
+- `npm run db:seed` solo su DB vuoto al primo deploy
+- Health probe: `GET /api/health` (senza auth)
+
 ## PostgreSQL (migrazione opzionale)
 
-SQLite è sufficiente per uso personale locale. Considera PostgreSQL quando:
+SQLite è sufficiente per uso personale locale e staging breve. Considera PostgreSQL quando:
 
 - serve backup/restore centralizzato o hosting remoto
 - crescono snapshot storici e report (volume dati)
@@ -417,8 +559,15 @@ SQLite è sufficiente per uso personale locale. Considera PostgreSQL quando:
    DATABASE_URL="postgresql://user:pass@host:5432/seb_capital?schema=public"
    ```
 2. In [`prisma/schema.prisma`](prisma/schema.prisma) cambia `provider = "postgresql"` nel datasource (solo se migri definitivamente).
-3. Applica schema: `npx prisma migrate deploy`
-4. Seed: `npm run db:seed`
+3. Applica schema: `npx prisma migrate deploy` (o `npm run db:migrate:deploy`)
+4. Seed **solo su DB vuoto**: `npm run db:seed` — non eseguire seed/reset su staging con dati reali
+
+**Comandi da evitare in production/staging con dati:**
+
+| Comando | Rischio |
+|---------|---------|
+| `npm run db:reset` | Cancella tutti i dati |
+| `npm run db:seed` | Sovrascrive/inserisce dati demo se usato su DB popolato |
 
 **SQLite → PostgreSQL:** per MVP conviene `npm run db:reset` sul nuovo DB e re-import portfolio; per dati produzione esportare tabelle critiche (`Position`, `TradeJournal`, `ExecutionLog`) via script custom.
 

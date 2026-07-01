@@ -24,6 +24,8 @@ export default async function SignalsPage() {
           outcome: s.outcome,
           closeReason: s.closeReason,
           reason: s.reason,
+          dataQualityScore: s.dataQualityScore,
+          dataSource: s.dataSource,
           strategy: {
             id: s.strategy.id,
             name: s.strategy.name,

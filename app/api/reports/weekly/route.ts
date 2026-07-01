@@ -3,6 +3,7 @@ import { z } from "zod";
 import { respondWithReport } from "@/lib/reports/respond";
 import { buildWeeklyReport } from "@/lib/reports/weekly";
 import { isValidDateKey } from "@/lib/reports/utils";
+import { logError } from "@/lib/logger";
 
 const querySchema = z.object({
   start: z
@@ -36,7 +37,7 @@ export async function GET(request: Request) {
       `weekly-report-${report.weekStart}`,
     );
   } catch (error) {
-    console.error(error);
+    logError("Request failed", error);
     return NextResponse.json(
       { error: "Errore nel report settimanale.", code: "WEEKLY_REPORT_ERROR" },
       { status: 500 },

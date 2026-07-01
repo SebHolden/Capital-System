@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { applyJournalScoring, scoreJournal } from "@/lib/journal";
+import { logError } from "@/lib/logger";
 import {
   mapMutatingSecurityError,
   verifyMutatingRequest,
@@ -77,7 +78,7 @@ export async function PATCH(
   } catch (error) {
     const securityError = mapMutatingSecurityError(error);
     if (securityError) return securityError;
-    console.error(error);
+    logError("Request failed", error);
     return NextResponse.json(
       { error: "Errore nell'aggiornamento del journal.", code: "JOURNAL_UPDATE_ERROR" },
       { status: 500 },

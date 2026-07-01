@@ -6,6 +6,7 @@ import {
   getPositionsWithAssets,
 } from "@/lib/portfolio";
 import { writeAuditLog, mapMutatingSecurityError, verifyMutatingRequest } from "@/lib/security";
+import { logError } from "@/lib/logger";
 
 const createPositionSchema = z.object({
   symbol: z.string().min(1).max(20),
@@ -26,7 +27,7 @@ export async function GET() {
 
     return NextResponse.json({ summary, positions });
   } catch (error) {
-    console.error(error);
+    logError("Request failed", error);
     return NextResponse.json(
       { error: "Errore nel recupero del portafoglio.", code: "PORTFOLIO_FETCH_ERROR" },
       { status: 500 },
@@ -54,7 +55,7 @@ export async function POST(request: Request) {
   } catch (error) {
     const securityError = mapMutatingSecurityError(error);
     if (securityError) return securityError;
-    console.error(error);
+    logError("Request failed", error);
     return NextResponse.json(
       { error: "Errore nella creazione della posizione.", code: "POSITION_CREATE_ERROR" },
       { status: 500 },

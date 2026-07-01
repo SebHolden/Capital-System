@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { fetchPriceHistory } from "@/lib/prices/history";
+import { logError } from "@/lib/logger";
 
 const querySchema = z.object({
   symbol: z.string().min(1),
@@ -48,7 +49,7 @@ export async function GET(request: Request) {
       bars: history.bars,
     });
   } catch (error) {
-    console.error(error);
+    logError("Request failed", error);
     return NextResponse.json(
       { error: "Errore recupero storico.", code: "RESEARCH_HISTORY_ERROR" },
       { status: 500 },

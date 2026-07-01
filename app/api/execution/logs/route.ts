@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { listExecutionLogs } from "@/lib/execution/logs";
+import { logError } from "@/lib/logger";
 
 const querySchema = z.object({
   mode: z.enum(["MOCK", "PAPER", "LIVE"]).optional(),
@@ -41,7 +42,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ logs });
   } catch (error) {
-    console.error(error);
+    logError("Request failed", error);
     return NextResponse.json(
       { error: "Errore nel recupero log esecuzione.", code: "EXECUTION_LOGS_ERROR" },
       { status: 500 },

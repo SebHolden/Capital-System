@@ -2,10 +2,15 @@ import type { PaperSignalStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { writeAuditLog } from "@/lib/security";
 import type { PerformanceMetrics } from "@/lib/backtesting/types";
-import { checkBacktestEligibility } from "./eligibility";
+import {
+  checkBacktestEligibility,
+  checkFullPaperEligibility,
+  isWalkForwardRequired,
+} from "./eligibility";
 import { generatePaperSignals } from "./generate";
 import { refreshPaperSignalMetrics } from "./monitor";
 import { runEvaluationPipeline } from "./promotion";
+import { validateStrategyForPaper } from "./walkforward";
 
 export class PaperActivationError extends Error {
   constructor(
@@ -90,6 +95,7 @@ export async function listStrategiesWithBacktests() {
 export async function activatePaperStrategy(
   strategyId: string,
   primaryAssetId?: string,
+  options?: { skipWalkForward?: boolean },
 ) {
   const strategy = await prisma.strategy.findUniqueOrThrow({
     where: { id: strategyId },
@@ -103,12 +109,23 @@ export async function activatePaperStrategy(
   });
 
   const latestRun = strategy.backtestRuns[0];
-  const eligibility = checkBacktestEligibility(latestRun);
+  
+  const eligibility = checkFullPaperEligibility(latestRun, strategy);
 
-  if (!eligibility.eligible) {
+  const backtestBlocking = eligibility.backtestReasons.length > 0;
+  const wfBlocking =
+    eligibility.walkForwardReasons.length > 0 &&
+    isWalkForwardRequired() &&
+    !options?.skipWalkForward;
+
+  if (backtestBlocking || wfBlocking) {
+    const allReasons = [
+      ...eligibility.backtestReasons,
+      ...eligibility.walkForwardReasons,
+    ];
     throw new PaperActivationError(
       "Strategia non idonea per paper trading.",
-      eligibility.reasons,
+      allReasons,
     );
   }
 
@@ -117,6 +134,16 @@ export async function activatePaperStrategy(
     throw new PaperActivationError("Asset principale non definito.", [
       "Specifica primaryAssetId o esegui un backtest.",
     ]);
+  }
+
+  if (isWalkForwardRequired() && !options?.skipWalkForward) {
+    const wfResult = await validateStrategyForPaper(strategyId);
+    if (wfResult && !wfResult.passed) {
+      throw new PaperActivationError(
+        "Walk-forward validation fallita.",
+        wfResult.warnings,
+      );
+    }
   }
 
   const updated = await prisma.strategy.update({
@@ -157,7 +184,12 @@ export {
   evaluateDegradations,
   runEvaluationPipeline,
 } from "./promotion";
-export { checkBacktestEligibility } from "./eligibility";
+export {
+  checkBacktestEligibility,
+  checkWalkForwardEligibility,
+  checkFullPaperEligibility,
+  isWalkForwardRequired,
+} from "./eligibility";
 export { getPaperStrategyRankings, syncStrategyEvaluations } from "./rankings";
 export type { PaperStrategyRanking } from "./rankings";
 export { computeSignalMetrics } from "./metrics";
@@ -171,3 +203,11 @@ export {
 } from "./scoring";
 export type { StrategyScoreInput, StrategyRecommendation } from "./scoring";
 export { shouldDegrade, DEGRADATION_RULES } from "./degradation";
+export {
+  validateStrategyForPaper,
+  runWalkForwardValidation,
+  computeWalkForwardScore,
+  computeOverfitScore,
+  getStrategiesNeedingValidation,
+} from "./walkforward";
+export type { WalkForwardValidationResult } from "./walkforward";

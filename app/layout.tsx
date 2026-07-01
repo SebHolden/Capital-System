@@ -18,6 +18,8 @@ export const metadata: Metadata = {
     "Dashboard personale per gestione capitale, rischio e journal decisionale.",
 };
 
+export const dynamic = "force-dynamic";
+
 export default function RootLayout({
   children,
 }: Readonly<{

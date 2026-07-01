@@ -11,6 +11,7 @@ import { ExecutionRateLimitError } from "@/lib/execution/rateLimit";
 import { executeOrderSchema } from "@/lib/execution/schemas";
 
 import { mapMutatingSecurityError, verifyMutatingRequest } from "@/lib/security";
+import { logError } from "@/lib/logger";
 
 /** @deprecated Usa POST /api/execution — wrapper legacy per compatibilità MOCK. */
 export async function POST(request: Request) {
@@ -85,7 +86,7 @@ export async function POST(request: Request) {
     const securityError = mapMutatingSecurityError(error);
     if (securityError) return securityError;
 
-    console.error(error);
+    logError("Request failed", error);
     return NextResponse.json(
       { error: "Errore nell'esecuzione mock.", code: "MOCK_EXECUTION_ERROR" },
       { status: 500 },

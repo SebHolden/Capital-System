@@ -156,6 +156,12 @@ export const PAPER_SIGNALS_RULE_SET: RuleSet = {
   rules: PAPER_SIGNAL_PATTERNS,
 };
 
+export const AUTOPILOT_RULE_SET: RuleSet = {
+  id: "autopilot",
+  pathPrefix: "lib/autopilot/",
+  rules: PAPER_SIGNAL_PATTERNS,
+};
+
 export const PYTHON_RULE_SET: RuleSet = {
   id: "python",
   pathPrefix: "",
@@ -166,6 +172,7 @@ export const RULE_SETS: RuleSet[] = [
   STRATEGY_RULE_SET,
   BACKTESTING_RULE_SET,
   PAPER_SIGNALS_RULE_SET,
+  AUTOPILOT_RULE_SET,
 ];
 
 export const MUTATING_HANDLER_PATTERN =

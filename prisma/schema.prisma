@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -350,6 +350,10 @@ model Strategy {
   evaluationScore Int?
   rating          StrategyRating?
   lastEvaluatedAt DateTime?
+  walkForwardValidatedAt DateTime?
+  walkForwardScore       Float?
+  overfitScore           Float?
+  dataQualityAvgScore    Int?
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
@@ -424,6 +428,9 @@ model PaperSignal {
   closeReason      String?
   outcome          PaperSignalOutcome @default(PENDING)
   evaluatedAt      DateTime?
+  dataQualityScore Int?
+  dataSource       String?
+  dataWarnings     String?
   lastMonitoredAt  DateTime?
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt

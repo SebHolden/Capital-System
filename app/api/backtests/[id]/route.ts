@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getBacktestRunDetail } from "@/lib/backtesting";
+import { logError } from "@/lib/logger";
 
 export async function GET(
   _request: Request,
@@ -18,7 +19,7 @@ export async function GET(
 
     return NextResponse.json({ run });
   } catch (error) {
-    console.error(error);
+    logError("Request failed", error);
     return NextResponse.json(
       { error: "Errore nel recupero del backtest.", code: "BACKTEST_DETAIL_ERROR" },
       { status: 500 },

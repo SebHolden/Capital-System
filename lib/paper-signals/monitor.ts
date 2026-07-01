@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/db";
 import { fetchPriceHistory } from "@/lib/prices/history";
+import { isCryptoAsset } from "@/lib/prices/symbols";
 import { effectivePrice, resolvePrice } from "@/lib/prices";
+import { validateDataQuality } from "@/lib/data-quality";
 import { toDateKey } from "./utils";
 import { computeSignalMetrics } from "./metrics";
 import { resolveSignalStatus } from "./lifecycle";
@@ -15,6 +17,15 @@ async function refreshSingleSignal(
     signal.asset,
     signal.signalDate,
     now,
+  );
+
+  const isCrypto = isCryptoAsset(signal.asset.assetType);
+  const dataQuality = validateDataQuality(
+    history,
+    signal.asset.id,
+    signal.signalDate,
+    now,
+    isCrypto,
   );
 
   const resolved = await resolvePrice(signal.asset);
@@ -88,6 +99,11 @@ async function refreshSingleSignal(
       ruleFollowed,
       outcome,
       evaluatedAt,
+      dataQualityScore: dataQuality.qualityScore,
+      dataSource: dataQuality.dataSource,
+      dataWarnings: dataQuality.warnings.length > 0
+        ? JSON.stringify(dataQuality.warnings)
+        : null,
       lastMonitoredAt: now,
       status: lifecycle.status,
       closedAt: lifecycle.closedAt ?? signal.closedAt,

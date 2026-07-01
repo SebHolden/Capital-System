@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { logError } from "@/lib/logger";
 import {
   getPaperStrategyRankings,
   listStrategiesWithBacktests,
@@ -12,7 +13,7 @@ export async function GET() {
     ]);
     return NextResponse.json({ strategies, paperRankings });
   } catch (error) {
-    console.error(error);
+    logError("Request failed", error);
     return NextResponse.json(
       { error: "Errore nel recupero delle strategie.", code: "STRATEGIES_LIST_ERROR" },
       { status: 500 },

@@ -24,6 +24,8 @@ interface SignalRow {
   outcome: string;
   closeReason: string | null;
   reason: string;
+  dataQualityScore: number | null;
+  dataSource: string | null;
   strategy: {
     id: string;
     name: string;
@@ -31,6 +33,31 @@ interface SignalRow {
     rating?: string | null;
   };
   asset: { symbol: string };
+}
+
+function dataQualityVariant(
+  score: number | null,
+): "success" | "warning" | "danger" | "muted" {
+  if (score === null) return "muted";
+  if (score >= 75) return "success";
+  if (score >= 50) return "warning";
+  return "danger";
+}
+
+function dataSourceLabel(source: string | null): string {
+  if (!source) return "—";
+  switch (source) {
+    case "database":
+      return "DB";
+    case "coingecko":
+      return "CG";
+    case "finnhub":
+      return "FH";
+    case "synthetic":
+      return "SYN";
+    default:
+      return source;
+  }
 }
 
 function outcomeVariant(
@@ -132,6 +159,7 @@ export function SignalsClient({ initialSignals }: { initialSignals: SignalRow[] 
                   <th className="p-2">MAE/MFE</th>
                   <th className="p-2">Outcome</th>
                   <th className="p-2">Score strat.</th>
+                  <th className="p-2">Data Q.</th>
                   <th className="p-2">Rule</th>
                 </tr>
               </thead>
@@ -177,6 +205,14 @@ export function SignalsClient({ initialSignals }: { initialSignals: SignalRow[] 
                       {s.strategy.evaluationScore != null
                         ? `${s.strategy.evaluationScore}${s.strategy.rating ? ` (${s.strategy.rating})` : ""}`
                         : "—"}
+                    </td>
+                    <td className="p-2">
+                      <Badge variant={dataQualityVariant(s.dataQualityScore)}>
+                        {s.dataQualityScore !== null ? s.dataQualityScore : "—"}
+                      </Badge>
+                      <span className="ml-1 text-xs text-slate-500">
+                        {dataSourceLabel(s.dataSource)}
+                      </span>
                     </td>
                     <td className="p-2">
                       {s.ruleFollowed ? (

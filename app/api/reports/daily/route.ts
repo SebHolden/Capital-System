@@ -3,6 +3,7 @@ import { z } from "zod";
 import { buildDailyReport } from "@/lib/reports/daily";
 import { respondWithReport } from "@/lib/reports/respond";
 import { isValidDateKey } from "@/lib/reports/utils";
+import { logError } from "@/lib/logger";
 
 const querySchema = z.object({
   date: z
@@ -36,7 +37,7 @@ export async function GET(request: Request) {
       `daily-report-${report.date}`,
     );
   } catch (error) {
-    console.error(error);
+    logError("Request failed", error);
     return NextResponse.json(
       { error: "Errore nel report giornaliero.", code: "DAILY_REPORT_ERROR" },
       { status: 500 },

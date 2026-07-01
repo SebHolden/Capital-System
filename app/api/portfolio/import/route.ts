@@ -7,6 +7,7 @@ import {
   parsePortfolioCsv,
 } from "@/lib/portfolio/import";
 import { mapMutatingSecurityError, verifyMutatingRequest, writeAuditLog } from "@/lib/security";
+import { logError } from "@/lib/logger";
 
 const previewSchema = z.object({
   action: z.literal("preview"),
@@ -58,7 +59,7 @@ export async function POST(request: Request) {
   } catch (error) {
     const securityError = mapMutatingSecurityError(error);
     if (securityError) return securityError;
-    console.error(error);
+    logError("Request failed", error);
     return NextResponse.json(
       { error: "Errore import CSV.", code: "IMPORT_ERROR" },
       { status: 500 },

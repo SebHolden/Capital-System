@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { fetchEquityQuotesProxy, isFinnhubEnabled } from "@/lib/prices";
+import { logError } from "@/lib/logger";
 
 const querySchema = z.object({
   symbols: z.string().min(1),
@@ -42,7 +43,7 @@ export async function GET(request: Request) {
     const quotes = await fetchEquityQuotesProxy(symbols);
     return NextResponse.json({ manual: false, quotes });
   } catch (error) {
-    console.error(error);
+    logError("Request failed", error);
     return NextResponse.json(
       { error: "Finnhub request failed", code: "EQUITY_PRICE_ERROR" },
       { status: 502 },

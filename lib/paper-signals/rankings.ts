@@ -37,6 +37,8 @@ export interface PaperStrategyRanking {
   worstMaePct: number | null;
   avgMaeMfeRatio: number | null;
   ruleFollowedPct: number | null;
+  avgDataQualityScore: number | null;
+  syntheticDataCount: number;
   score: number;
   rating: StrategyRating;
   recommendation: StrategyRecommendation;
@@ -178,6 +180,23 @@ export function buildStrategyRanking(
     );
   }
 
+  const avgDataQualityScore = average(signals.map((s) => s.dataQualityScore));
+  const syntheticDataCount = signals.filter(
+    (s) => s.dataSource === "synthetic",
+  ).length;
+
+  if (syntheticDataCount > 0) {
+    promotionBlockers.push(
+      `${syntheticDataCount} segnali con dati sintetici.`,
+    );
+  }
+
+  if (avgDataQualityScore !== null && avgDataQualityScore < 60) {
+    promotionBlockers.push(
+      `Qualità dati bassa: ${avgDataQualityScore.toFixed(0)}/100.`,
+    );
+  }
+
   const promotionReady =
     strategy.status === "PAPER_ACTIVE" && promotionBlockers.length === 0;
 
@@ -211,6 +230,8 @@ export function buildStrategyRanking(
     worstMaePct: minValue(signals.map((s) => s.maePct)),
     avgMaeMfeRatio,
     ruleFollowedPct,
+    avgDataQualityScore,
+    syntheticDataCount,
     score,
     rating,
     recommendation,
@@ -241,6 +262,9 @@ export async function syncStrategyEvaluations(): Promise<{ updated: number }> {
       data: {
         evaluationScore: ranking.score,
         rating: ranking.rating,
+        dataQualityAvgScore: ranking.avgDataQualityScore !== null
+          ? Math.round(ranking.avgDataQualityScore)
+          : null,
         lastEvaluatedAt: now,
       },
     });

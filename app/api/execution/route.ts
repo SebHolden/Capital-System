@@ -10,6 +10,7 @@ import { IdempotencyKeyError } from "@/lib/execution/idempotency";
 import { ExecutionRateLimitError } from "@/lib/execution/rateLimit";
 import { executeOrderSchema } from "@/lib/execution/schemas";
 import { mapMutatingSecurityError, verifyMutatingRequest } from "@/lib/security";
+import { logError } from "@/lib/logger";
 
 export async function POST(request: Request) {
   try {
@@ -85,7 +86,7 @@ export async function POST(request: Request) {
     const securityError = mapMutatingSecurityError(error);
     if (securityError) return securityError;
 
-    console.error(error);
+    logError("Request failed", error);
     return NextResponse.json(
       { error: "Errore nell'esecuzione ordine.", code: "EXECUTION_ERROR" },
       { status: 500 },

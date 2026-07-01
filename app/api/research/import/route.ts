@@ -6,6 +6,7 @@ import {
   parseHistoryCsv,
 } from "@/lib/research/importHistory";
 import { CsrfError, verifyMutatingRequest, writeAuditLog } from "@/lib/security";
+import { logError } from "@/lib/logger";
 
 const previewSchema = z.object({
   action: z.literal("preview"),
@@ -62,7 +63,7 @@ export async function POST(request: Request) {
         { status: 403 },
       );
     }
-    console.error(error);
+    logError("Request failed", error);
     return NextResponse.json(
       { error: "Errore import storico.", code: "IMPORT_ERROR" },
       { status: 500 },

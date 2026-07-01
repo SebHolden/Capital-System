@@ -48,6 +48,15 @@ describe("architecture scan", () => {
     expect(violations.some((v) => v.ruleId === "call-execute-order")).toBe(true);
   });
 
+  it("fails when autopilot calls getBroker", () => {
+    const violations = scanFile(
+      "lib/autopilot/foo.ts",
+      `import { getBroker } from "@/lib/brokers";\nawait getBroker("LIVE");`,
+    );
+
+    expect(violations.some((v) => v.ruleId === "call-get-broker")).toBe(true);
+  });
+
   it("fails when Python contains broker credentials", () => {
     const violations = scanFile(
       "research/foo.py",

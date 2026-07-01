@@ -2,20 +2,26 @@
   "name": "seb-capital-system",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "npm@11.6.2",
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
+    "postinstall": "prisma generate",
+    "vercel-build": "prisma generate && prisma migrate deploy && next build",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check-all": "turbo run build lint typecheck test",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
+    "db:migrate:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",
     "db:reset": "prisma migrate reset",
     "paper-signals:run": "tsx scripts/paper-signals-run.ts",
     "reports:daily": "tsx scripts/reports-daily.ts",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "autopilot:daily": "tsx scripts/autopilot-daily.ts",
     "architecture:check": "tsx scripts/architecture-check.ts"
   },
   "prisma": {
@@ -40,6 +46,7 @@
     "prisma": "^6.9.0",
     "tailwindcss": "^4.1.8",
     "tsx": "^4.19.4",
+    "turbo": "^2.10.2",
     "typescript": "^5.8.3",
     "vitest": "^3.2.4"
   }

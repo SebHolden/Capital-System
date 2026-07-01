@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { generatePaperSignals } from "@/lib/paper-signals";
 import { mapMutatingSecurityError, verifyMutatingRequest } from "@/lib/security";
+import { logError } from "@/lib/logger";
 
 export async function POST(request: Request) {
   try {
@@ -10,7 +11,7 @@ export async function POST(request: Request) {
   } catch (error) {
     const securityError = mapMutatingSecurityError(error);
     if (securityError) return securityError;
-    console.error(error);
+    logError("Request failed", error);
     const message =
       error instanceof Error ? error.message : "Errore generazione segnali.";
     return NextResponse.json(

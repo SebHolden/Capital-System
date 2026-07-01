@@ -63,11 +63,22 @@ interface PaperRankingRow {
   avg30dPct: number | null;
   worstMaePct: number | null;
   ruleFollowedPct: number | null;
+  avgDataQualityScore: number | null;
+  syntheticDataCount: number;
   score: number;
   rating: string;
   recommendation: string;
   promotionReady: boolean;
   promotionBlockers: string[];
+}
+
+function dataQualityVariant(
+  score: number | null,
+): "success" | "warning" | "danger" | "muted" {
+  if (score === null) return "muted";
+  if (score >= 75) return "success";
+  if (score >= 50) return "warning";
+  return "danger";
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -367,6 +378,7 @@ export function StrategiesClient({
                   <th className="pb-2 pr-4">Rating</th>
                   <th className="pb-2 pr-4">30d</th>
                   <th className="pb-2 pr-4">Worst MAE</th>
+                  <th className="pb-2 pr-4">Data Q.</th>
                   <th className="pb-2">Raccomandazione</th>
                 </tr>
               </thead>
@@ -413,6 +425,18 @@ export function StrategiesClient({
                       {ranking.worstMaePct !== null
                         ? formatPct(ranking.worstMaePct)
                         : "—"}
+                    </td>
+                    <td className="py-2 pr-4">
+                      <Badge variant={dataQualityVariant(ranking.avgDataQualityScore)}>
+                        {ranking.avgDataQualityScore !== null
+                          ? Math.round(ranking.avgDataQualityScore)
+                          : "—"}
+                      </Badge>
+                      {ranking.syntheticDataCount > 0 && (
+                        <span className="ml-1 text-xs text-amber-400">
+                          ({ranking.syntheticDataCount} syn)
+                        </span>
+                      )}
                     </td>
                     <td className="py-2">
                       {ranking.promotionReady ? (

@@ -1,9 +1,14 @@
-import type { BacktestRun } from "@prisma/client";
+import type { BacktestRun, Strategy } from "@prisma/client";
 import type { PerformanceMetrics } from "@/lib/backtesting/types";
 
 export interface BacktestMetricsPayload extends PerformanceMetrics {
   outOfSample?: PerformanceMetrics | null;
   outOfSamplePassed?: boolean;
+}
+
+export interface WalkForwardEligibilityResult {
+  eligible: boolean;
+  reasons: string[];
 }
 
 function parseMetricsPayload(run: BacktestRun): BacktestMetricsPayload | null {
@@ -113,5 +118,110 @@ export function checkBacktestEligibility(
   return {
     eligible: reasons.length === 0,
     reasons,
+  };
+}
+
+export function getWalkForwardMinScoreForPaper(): number {
+  const raw = process.env.WALKFORWARD_MIN_SCORE_FOR_PAPER;
+  const parsed = raw ? parseFloat(raw) : 0.5;
+  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 1 ? parsed : 0.5;
+}
+
+export function getMaxOverfitScoreForPaper(): number {
+  const raw = process.env.MAX_OVERFIT_SCORE_FOR_PAPER;
+  const parsed = raw ? parseFloat(raw) : 0.6;
+  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 1 ? parsed : 0.6;
+}
+
+export function getMinDataQualityForPaper(): number {
+  const raw = process.env.MIN_DATA_QUALITY_FOR_PAPER;
+  const parsed = raw ? parseInt(raw, 10) : 50;
+  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 100 ? parsed : 50;
+}
+
+export function isWalkForwardRequired(): boolean {
+  const raw = process.env.WALKFORWARD_REQUIRED_FOR_PAPER;
+  return raw !== "false";
+}
+
+export function checkWalkForwardEligibility(
+  strategy: Pick<
+    Strategy,
+    "walkForwardValidatedAt" | "walkForwardScore" | "overfitScore" | "dataQualityAvgScore"
+  >,
+): WalkForwardEligibilityResult {
+  const reasons: string[] = [];
+
+  if (!isWalkForwardRequired()) {
+    return { eligible: true, reasons: [] };
+  }
+
+  if (!strategy.walkForwardValidatedAt) {
+    return {
+      eligible: false,
+      reasons: ["Walk-forward validation non ancora eseguita."],
+    };
+  }
+
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+  if (strategy.walkForwardValidatedAt < thirtyDaysAgo) {
+    reasons.push("Walk-forward validation scaduta (>30 giorni).");
+  }
+
+  const minWfScore = getWalkForwardMinScoreForPaper();
+  if (
+    strategy.walkForwardScore === null ||
+    strategy.walkForwardScore < minWfScore
+  ) {
+    reasons.push(
+      `Walk-forward score ${((strategy.walkForwardScore ?? 0) * 100).toFixed(0)}% sotto soglia ${(minWfScore * 100).toFixed(0)}%.`,
+    );
+  }
+
+  const maxOverfit = getMaxOverfitScoreForPaper();
+  if (strategy.overfitScore !== null && strategy.overfitScore > maxOverfit) {
+    reasons.push(
+      `Overfit score ${(strategy.overfitScore * 100).toFixed(0)}% sopra soglia ${(maxOverfit * 100).toFixed(0)}%.`,
+    );
+  }
+
+  const minDataQuality = getMinDataQualityForPaper();
+  if (
+    strategy.dataQualityAvgScore !== null &&
+    strategy.dataQualityAvgScore < minDataQuality
+  ) {
+    reasons.push(
+      `Data quality ${strategy.dataQualityAvgScore}/100 sotto soglia ${minDataQuality}/100.`,
+    );
+  }
+
+  return {
+    eligible: reasons.length === 0,
+    reasons,
+  };
+}
+
+export interface FullPaperEligibilityResult {
+  eligible: boolean;
+  backtestReasons: string[];
+  walkForwardReasons: string[];
+}
+
+export function checkFullPaperEligibility(
+  latestRun: BacktestRun | null | undefined,
+  strategy: Pick<
+    Strategy,
+    "walkForwardValidatedAt" | "walkForwardScore" | "overfitScore" | "dataQualityAvgScore"
+  >,
+): FullPaperEligibilityResult {
+  const backtestResult = checkBacktestEligibility(latestRun);
+  const wfResult = checkWalkForwardEligibility(strategy);
+
+  return {
+    eligible: backtestResult.eligible && wfResult.eligible,
+    backtestReasons: backtestResult.reasons,
+    walkForwardReasons: wfResult.reasons,
   };
 }

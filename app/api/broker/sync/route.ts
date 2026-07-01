@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { syncBrokerAccountSnapshot } from "@/lib/brokers/alpaca-account";
 import { mapMutatingSecurityError, verifyMutatingRequest, writeAuditLog } from "@/lib/security";
+import { logError } from "@/lib/logger";
 
 const bodySchema = z.object({
   mode: z.enum(["PAPER", "LIVE"]).default("PAPER"),
@@ -32,7 +33,7 @@ export async function POST(request: Request) {
   } catch (error) {
     const securityError = mapMutatingSecurityError(error);
     if (securityError) return securityError;
-    console.error(error);
+    logError("Request failed", error);
     return NextResponse.json(
       {
         error:

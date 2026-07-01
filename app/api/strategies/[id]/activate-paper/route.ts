@@ -5,6 +5,7 @@ import {
 } from "@/lib/paper-signals";
 import { activatePaperSchema } from "@/lib/paper-signals/schemas";
 import { CsrfError, verifyMutatingRequest } from "@/lib/security";
+import { logError } from "@/lib/logger";
 
 export async function POST(
   request: Request,
@@ -43,7 +44,7 @@ export async function POST(
       );
     }
 
-    console.error(error);
+    logError("Request failed", error);
     return NextResponse.json(
       { error: "Errore attivazione paper.", code: "PAPER_ACTIVATION_ERROR" },
       { status: 500 },

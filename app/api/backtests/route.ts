@@ -2,13 +2,14 @@ import { NextResponse } from "next/server";
 import { listBacktestRuns, runBacktest } from "@/lib/backtesting";
 import { runBacktestSchema } from "@/lib/backtesting/schemas";
 import { mapMutatingSecurityError, verifyMutatingRequest } from "@/lib/security";
+import { logError } from "@/lib/logger";
 
 export async function GET() {
   try {
     const runs = await listBacktestRuns(20);
     return NextResponse.json({ runs });
   } catch (error) {
-    console.error(error);
+    logError("Request failed", error);
     return NextResponse.json(
       { error: "Errore nel recupero dei backtest.", code: "BACKTEST_LIST_ERROR" },
       { status: 500 },
@@ -64,7 +65,7 @@ export async function POST(request: Request) {
   } catch (error) {
     const securityError = mapMutatingSecurityError(error);
     if (securityError) return securityError;
-    console.error(error);
+    logError("Request failed", error);
     const message =
       error instanceof Error ? error.message : "Errore nell'esecuzione del backtest.";
     return NextResponse.json(

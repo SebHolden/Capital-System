@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
+import { logError } from "@/lib/logger";
 import {
   getUserSettings,
   isLiveTradingEnabled,
@@ -67,7 +68,7 @@ export async function GET() {
       liveTradingEnabled: isLiveTradingEnabled(),
     });
   } catch (error) {
-    console.error(error);
+    logError("Request failed", error);
     return NextResponse.json(
       { error: "Errore nel recupero delle impostazioni.", code: "SETTINGS_FETCH_ERROR" },
       { status: 500 },
@@ -112,7 +113,7 @@ export async function PATCH(request: Request) {
   } catch (error) {
     const securityError = mapMutatingSecurityError(error);
     if (securityError) return securityError;
-    console.error(error);
+    logError("Request failed", error);
     return NextResponse.json(
       { error: "Errore nell'aggiornamento delle impostazioni.", code: "SETTINGS_UPDATE_ERROR" },
       { status: 500 },

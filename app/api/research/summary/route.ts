@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { buildResearchSummary } from "@/lib/research";
+import { logError } from "@/lib/logger";
 
 const querySchema = z.object({
   symbols: z.string().optional(),
@@ -29,7 +30,7 @@ export async function GET(request: Request) {
     const summary = await buildResearchSummary(symbols, parsed.data.days ?? 90);
     return NextResponse.json(summary);
   } catch (error) {
-    console.error(error);
+    logError("Request failed", error);
     return NextResponse.json(
       { error: "Errore research summary.", code: "RESEARCH_SUMMARY_ERROR" },
       { status: 500 },

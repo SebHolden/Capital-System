@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { simulateOrder } from "@/lib/execution";
 import { simulateOrderSchema } from "@/lib/execution/schemas";
 import { mapMutatingSecurityError, verifyMutatingRequest } from "@/lib/security";
+import { logError } from "@/lib/logger";
 
 export async function POST(request: Request) {
   try {
@@ -21,7 +22,7 @@ export async function POST(request: Request) {
   } catch (error) {
     const securityError = mapMutatingSecurityError(error);
     if (securityError) return securityError;
-    console.error(error);
+    logError("Request failed", error);
     return NextResponse.json(
       { error: "Errore nella simulazione dell'ordine.", code: "SIMULATE_ERROR" },
       { status: 500 },

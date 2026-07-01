@@ -1,4 +1,3 @@
-import { timingSafeEqual } from "crypto";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
@@ -16,13 +15,19 @@ function authNotConfigured(): NextResponse {
 }
 
 function safePasswordEqual(provided: string, expected: string): boolean {
-  const providedBuf = Buffer.from(provided);
-  const expectedBuf = Buffer.from(expected);
-  if (providedBuf.length !== expectedBuf.length) return false;
-  return timingSafeEqual(providedBuf, expectedBuf);
+  if (provided.length !== expected.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < provided.length; i += 1) {
+    mismatch |= provided.charCodeAt(i) ^ expected.charCodeAt(i);
+  }
+  return mismatch === 0;
 }
 
 export function middleware(request: NextRequest) {
+  if (request.nextUrl.pathname === "/api/health") {
+    return NextResponse.next();
+  }
+
   const password = process.env.APP_PASSWORD?.trim();
   if (!password) {
     if (process.env.NODE_ENV === "production") {

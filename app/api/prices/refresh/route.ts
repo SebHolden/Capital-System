@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { refreshPrices } from "@/lib/prices";
 import { writeAuditLog, mapMutatingSecurityError, verifyMutatingRequest } from "@/lib/security";
+import { logError } from "@/lib/logger";
 
 const bodySchema = z.object({
   assetIds: z.array(z.string()).optional(),
@@ -39,7 +40,7 @@ export async function POST(request: Request) {
   } catch (error) {
     const securityError = mapMutatingSecurityError(error);
     if (securityError) return securityError;
-    console.error(error);
+    logError("Request failed", error);
     return NextResponse.json(
       { error: "Errore nel refresh prezzi.", code: "PRICES_REFRESH_ERROR" },
       { status: 500 },

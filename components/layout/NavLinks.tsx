@@ -15,6 +15,7 @@ const links = [
   { href: "/journal", label: "Journal" },
   { href: "/execution", label: "Esecuzione" },
   { href: "/reports", label: "Report" },
+  { href: "/autopilot", label: "Autopilot" },
   { href: "/settings", label: "Impostazioni" },
 ];
 

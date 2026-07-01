@@ -460,7 +460,11 @@ export async function simulateOrder(
   const finalAssessment = applyAllowedAmountCheck(assessment, orderAmount);
 
   await writeAuditLog("ORDER_SIMULATED", "OrderIntent", {
-    ...input,
+    assetId: input.assetId,
+    side: input.side,
+    quantity: input.quantity,
+    limitPrice: input.limitPrice,
+    journalId: input.journalId,
     riskLevel: finalAssessment.level,
     blocked: finalAssessment.blocked,
     allowedAmount: finalAssessment.allowedAmount,

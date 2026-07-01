@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { listPaperSignals } from "@/lib/paper-signals";
 import { listPaperSignalsSchema } from "@/lib/paper-signals/schemas";
+import { logError } from "@/lib/logger";
 
 export async function GET(request: Request) {
   try {
@@ -27,7 +28,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ signals });
   } catch (error) {
-    console.error(error);
+    logError("Request failed", error);
     return NextResponse.json(
       { error: "Errore nel recupero dei segnali.", code: "PAPER_SIGNALS_LIST_ERROR" },
       { status: 500 },

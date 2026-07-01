@@ -359,3 +359,13 @@ export async function getBacktestRunDetail(id: string) {
     equityCurve: JSON.parse(run.equityCurveJson),
   };
 }
+
+export {
+  analyzeOverfit,
+  computeDegradation,
+  computeConsistency,
+  computeFoldStability,
+  analyzeParameterSensitivity,
+  getOverfitRecommendationLabel,
+} from "./overfit";
+export type { OverfitAnalysis } from "./overfit";

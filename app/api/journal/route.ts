@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { applyJournalScoring } from "@/lib/journal";
 import { mapMutatingSecurityError, verifyMutatingRequest, writeAuditLog } from "@/lib/security";
+import { logError } from "@/lib/logger";
 const journalFieldsSchema = {
   title: z.string().min(1).max(200),
   thesis: z.string().min(10),
@@ -26,7 +27,7 @@ export async function GET() {
     });
     return NextResponse.json({ journals });
   } catch (error) {
-    console.error(error);
+    logError("Request failed", error);
     return NextResponse.json(
       { error: "Errore nel recupero dei journal.", code: "JOURNAL_FETCH_ERROR" },
       { status: 500 },
@@ -59,7 +60,7 @@ export async function POST(request: Request) {
   } catch (error) {
     const securityError = mapMutatingSecurityError(error);
     if (securityError) return securityError;
-    console.error(error);
+    logError("Request failed", error);
     return NextResponse.json(
       { error: "Errore nella creazione del journal.", code: "JOURNAL_CREATE_ERROR" },
       { status: 500 },

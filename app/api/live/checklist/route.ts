@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getUserSettings, getBrokerPermissionsChecklist } from "@/lib/security";
 import { getPortfolioSummary } from "@/lib/portfolio";
+import { logError } from "@/lib/logger";
 
 export async function GET() {
   try {
@@ -14,7 +15,7 @@ export async function GET() {
     );
     return NextResponse.json(checklist);
   } catch (error) {
-    console.error(error);
+    logError("Request failed", error);
     return NextResponse.json(
       {
         error: "Errore nel recupero della checklist LIVE.",

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { resolvePortfolioAssetIds, resolvePricesForAssets } from "@/lib/prices";
+import { logError } from "@/lib/logger";
 
 export async function GET() {
   try {
@@ -7,7 +8,7 @@ export async function GET() {
     const prices = await resolvePricesForAssets(assets);
     return NextResponse.json({ prices });
   } catch (error) {
-    console.error(error);
+    logError("Request failed", error);
     return NextResponse.json(
       { error: "Errore nel recupero prezzi.", code: "PRICES_FETCH_ERROR" },
       { status: 500 },

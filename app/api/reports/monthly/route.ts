@@ -3,6 +3,7 @@ import { z } from "zod";
 import { buildMonthlyReport } from "@/lib/reports/monthly";
 import { respondWithReport } from "@/lib/reports/respond";
 import { isValidMonthKey } from "@/lib/reports/utils";
+import { logError } from "@/lib/logger";
 
 const querySchema = z.object({
   month: z
@@ -36,7 +37,7 @@ export async function GET(request: Request) {
       `monthly-report-${report.monthKey}`,
     );
   } catch (error) {
-    console.error(error);
+    logError("Request failed", error);
     return NextResponse.json(
       { error: "Errore nel report mensile.", code: "MONTHLY_REPORT_ERROR" },
       { status: 500 },
