@@ -1,19 +1,104 @@
 @import "tailwindcss";
 
 :root {
-  --background: #0a0f1a;
+  --background: #0a0a0f;
+  --background-secondary: #0d1117;
   --foreground: #e8edf5;
-  --card: #111827;
-  --card-border: #1f2937;
+  --card: rgba(17, 24, 39, 0.6);
+  --card-solid: #111827;
+  --card-border: rgba(255, 255, 255, 0.08);
+  --card-border-hover: rgba(255, 255, 255, 0.15);
   --muted: #9ca3af;
   --accent: #3b82f6;
+  --accent-glow: rgba(59, 130, 246, 0.3);
   --danger: #ef4444;
+  --danger-glow: rgba(239, 68, 68, 0.3);
   --warning: #f59e0b;
   --success: #22c55e;
+  --success-glow: rgba(34, 197, 94, 0.3);
+  --glass-blur: 12px;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+.glass {
+  background: var(--card);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--card-border);
+}
+
+.glass:hover {
+  border-color: var(--card-border-hover);
+}
+
+.glass-solid {
+  background: var(--card-solid);
+  border: 1px solid var(--card-border);
+}
+
+.glow-success {
+  box-shadow: 0 0 20px var(--success-glow), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.glow-danger {
+  box-shadow: 0 0 20px var(--danger-glow), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.glow-accent {
+  box-shadow: 0 0 20px var(--accent-glow), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.gradient-success {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.15) 0%, rgba(34, 197, 94, 0.05) 100%);
+}
+
+.gradient-danger {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(239, 68, 68, 0.05) 100%);
+}
+
+.gradient-accent {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(59, 130, 246, 0.05) 100%);
+}
+
+.gradient-warning {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(245, 158, 11, 0.05) 100%);
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.text-gradient {
+  background: linear-gradient(135deg, #fff 0%, #9ca3af 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--background);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
 }
