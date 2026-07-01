@@ -64,7 +64,9 @@ export function validateProductionEnv(
   }
 
   if (!env.APP_PASSWORD?.trim()) {
-    errors.push("APP_PASSWORD is required in production.");
+    warnings.push(
+      "APP_PASSWORD is not set; the app is publicly accessible without Basic auth.",
+    );
   }
 
   if (!env.APP_BASE_URL?.trim()) {

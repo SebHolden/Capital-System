@@ -30,12 +30,12 @@ describe("middleware auth", () => {
     process.env = { ...originalEnv };
   });
 
-  it("blocks all requests in production when APP_PASSWORD is missing", () => {
+  it("allows requests in production when APP_PASSWORD is missing", () => {
     process.env.NODE_ENV = "production";
     delete process.env.APP_PASSWORD;
 
     const response = middleware(makeRequest());
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(200);
   });
 
   it("allows requests in development when APP_PASSWORD is missing", () => {

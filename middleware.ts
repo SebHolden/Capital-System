@@ -10,10 +10,6 @@ function unauthorized(): NextResponse {
   });
 }
 
-function authNotConfigured(): NextResponse {
-  return new NextResponse("APP_PASSWORD non configurata.", { status: 500 });
-}
-
 function safePasswordEqual(provided: string, expected: string): boolean {
   if (provided.length !== expected.length) return false;
   let mismatch = 0;
@@ -30,9 +26,6 @@ export function middleware(request: NextRequest) {
 
   const password = process.env.APP_PASSWORD?.trim();
   if (!password) {
-    if (process.env.NODE_ENV === "production") {
-      return authNotConfigured();
-    }
     return NextResponse.next();
   }
 
