@@ -23,6 +23,7 @@ jobs:
           --health-retries 5
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/seb_capital_test
+      DIRECT_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/seb_capital_test
       EXECUTION_MODE: mock
       ENABLE_LIVE_TRADING: false
     steps:
