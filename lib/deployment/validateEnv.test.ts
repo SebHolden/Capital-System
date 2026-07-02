@@ -22,7 +22,7 @@ describe("validateProductionEnv", () => {
     expect(result.warnings).toEqual([]);
   });
 
-  it("errors in production without APP_PASSWORD", () => {
+  it("warns in production without APP_PASSWORD", () => {
     process.env.NODE_ENV = "production";
     delete process.env.APP_PASSWORD;
     process.env.APP_BASE_URL = "https://staging.example.com";
@@ -30,7 +30,8 @@ describe("validateProductionEnv", () => {
     process.env.ENABLE_LIVE_TRADING = "false";
 
     const result = validateProductionEnv(process.env);
-    expect(result.errors.some((e) => e.includes("APP_PASSWORD"))).toBe(true);
+    expect(result.errors).toEqual([]);
+    expect(result.warnings.some((w) => w.includes("APP_PASSWORD"))).toBe(true);
   });
 
   it("errors in production when APP_AUTH_DISABLED is true", () => {

@@ -64,8 +64,8 @@ export function validateProductionEnv(
   }
 
   if (!env.APP_PASSWORD?.trim()) {
-    errors.push(
-      "APP_PASSWORD is required in production; without it middleware returns 503 and blocks all routes except /api/health.",
+    warnings.push(
+      "APP_PASSWORD is not set; middleware returns 503 on all routes except /api/health until configured.",
     );
   }
 
