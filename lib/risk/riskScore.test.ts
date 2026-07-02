@@ -40,4 +40,43 @@ describe("computeRiskScore", () => {
     expect(low).toBeGreaterThanOrEqual(0);
     expect(low).toBeLessThanOrEqual(100);
   });
+
+  it("penalizes untrusted price exposure", () => {
+    const baseline = computeRiskScore({
+      riskLevel: "GREEN",
+      drawdownPct: 2,
+      maxDrawdownPct: 20,
+      maxPositionPct: 25,
+      topPositionPct: 10,
+      journalQualityAvg: 85,
+    });
+
+    const withUntrusted = computeRiskScore({
+      riskLevel: "GREEN",
+      drawdownPct: 2,
+      maxDrawdownPct: 20,
+      maxPositionPct: 25,
+      topPositionPct: 10,
+      journalQualityAvg: 85,
+      hasUntrustedPrices: true,
+      untrustedPricePct: 10,
+    });
+
+    expect(withUntrusted).toBeGreaterThan(baseline);
+  });
+
+  it("forces score to at least 80 when untrusted exposure is >= 25%", () => {
+    const score = computeRiskScore({
+      riskLevel: "GREEN",
+      drawdownPct: 0,
+      maxDrawdownPct: 20,
+      maxPositionPct: 25,
+      topPositionPct: 5,
+      journalQualityAvg: 90,
+      hasUntrustedPrices: true,
+      untrustedPricePct: 25,
+    });
+    expect(score).toBeGreaterThanOrEqual(80);
+    expect(riskScoreLabel(score)).toBe("Critico");
+  });
 });

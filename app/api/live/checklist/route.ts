@@ -5,13 +5,17 @@ import { logError } from "@/lib/logger";
 
 export async function GET() {
   try {
-    const [settings, { portfolio }] = await Promise.all([
+    const [settings, summary] = await Promise.all([
       getUserSettings(),
       getPortfolioSummary(),
     ]);
     const checklist = await getBrokerPermissionsChecklist(
       settings,
-      portfolio.totalValue,
+      summary.portfolio.totalValue,
+      {
+        hasUntrustedPrices: summary.priceQuality.hasUntrustedPrices,
+        untrustedPct: summary.priceQuality.untrustedPct,
+      },
     );
     return NextResponse.json(checklist);
   } catch (error) {

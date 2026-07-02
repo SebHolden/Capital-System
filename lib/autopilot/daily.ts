@@ -25,7 +25,7 @@ export function classifyAction(input: {
   riskLevel: RiskLevel;
   killSwitchActive: boolean;
   liveTradingEnabled: boolean;
-  hasStalePrices: boolean;
+  hasUntrustedPrices: boolean;
   strategyPromoted?: boolean;
   isCoreDca?: boolean;
   isAggressiveStrategy?: boolean;
@@ -34,17 +34,21 @@ export function classifyAction(input: {
     return "DO_NOTHING";
   }
 
-  if (input.hasStalePrices || input.riskLevel === "YELLOW" || input.riskLevel === "ORANGE") {
+  if (input.hasUntrustedPrices || input.riskLevel === "YELLOW" || input.riskLevel === "ORANGE") {
     if (input.isAggressiveStrategy) {
       return "WATCH";
     }
+  }
+
+  if (input.strategyPromoted && input.hasUntrustedPrices) {
+    return "DO_NOTHING";
   }
 
   if (input.strategyPromoted) {
     return "REVIEW_MANUALLY";
   }
 
-  if (input.isCoreDca && input.riskLevel === "GREEN" && !input.hasStalePrices) {
+  if (input.isCoreDca && input.riskLevel === "GREEN" && !input.hasUntrustedPrices) {
     return "MANUAL_APPROVAL_REQUIRED";
   }
 
@@ -78,7 +82,8 @@ export function generateSuggestedActions(input: {
   riskLevel: RiskLevel;
   killSwitchActive: boolean;
   liveTradingEnabled: boolean;
-  priceWarnings: Array<{ symbol: string; status: string }>;
+  hasUntrustedPrices: boolean;
+  untrustedPriceWarnings: Array<{ symbol: string; status: string }>;
   rankings: Awaited<ReturnType<typeof getPaperStrategyRankings>>;
   promotedToday: string[];
   degradedToday: string[];
@@ -88,7 +93,7 @@ export function generateSuggestedActions(input: {
   const actions: SuggestedAction[] = [];
   let doNothingReason: string | null = null;
 
-  const hasStalePrices = input.priceWarnings.length > 0;
+  const hasUntrustedPrices = input.hasUntrustedPrices;
 
   if (input.killSwitchActive) {
     doNothingReason = "Kill switch attivo: nessuna operazione consentita.";
@@ -110,12 +115,12 @@ export function generateSuggestedActions(input: {
       riskLevel: input.riskLevel,
       reason: doNothingReason,
     });
-  } else if (hasStalePrices) {
-    doNothingReason = "Prezzi stale o mancanti — attendere refresh dati affidabile.";
+  } else if (hasUntrustedPrices) {
+    doNothingReason = "Dati prezzo non affidabili: trading automatico bloccato.";
     actions.push({
-      id: "do-nothing-stale-prices",
+      id: "do-nothing-untrusted-prices",
       title: "Nessun acquisto core",
-      description: `${input.priceWarnings.length} asset con prezzo stale/mancante.`,
+      description: `${input.untrustedPriceWarnings.length} asset con prezzo non trusted (stale/manual/mancante).`,
       classification: "DO_NOTHING",
       riskLevel: input.riskLevel,
       reason: doNothingReason,
@@ -137,7 +142,7 @@ export function generateSuggestedActions(input: {
       riskLevel: input.riskLevel,
       killSwitchActive: input.killSwitchActive,
       liveTradingEnabled: input.liveTradingEnabled,
-      hasStalePrices,
+      hasUntrustedPrices,
       strategyPromoted: promotedToday || ranking.status === "PROMOTED",
       isCoreDca,
       isAggressiveStrategy: isAggressive,
@@ -306,16 +311,15 @@ export async function buildDailyDecisionBrief(options?: {
         })()
       : null;
 
-  const priceWarnings = summary.priceWarnings.map((p) => ({
-    symbol: p.asset.symbol,
-    status: p.priceStatus,
-  }));
-
   const { actions, doNothingReason } = generateSuggestedActions({
     riskLevel: summary.risk.level,
     killSwitchActive: summary.settings.killSwitchActive,
     liveTradingEnabled: isLiveTradingEnabled(),
-    priceWarnings,
+    hasUntrustedPrices: summary.priceQuality.hasUntrustedPrices,
+    untrustedPriceWarnings: summary.priceQuality.warnings.map((w) => ({
+      symbol: w.symbol,
+      status: w.status,
+    })),
     rankings,
     promotedToday,
     degradedToday,
@@ -359,9 +363,9 @@ export async function buildDailyDecisionBrief(options?: {
   if (summary.risk.warnings.length > 0) {
     whatRequiresAttention.push(...summary.risk.warnings);
   }
-  if (priceWarnings.length > 0) {
+  if (summary.priceQuality.hasUntrustedPrices) {
     whatRequiresAttention.push(
-      `${priceWarnings.length} asset con prezzo stale/mancante.`,
+      `${summary.priceQuality.warnings.length} asset con prezzo non trusted (${summary.priceQuality.untrustedPct.toFixed(1)}% esposizione).`,
     );
   }
   if (promotedToday.length > 0) {
@@ -385,8 +389,8 @@ export async function buildDailyDecisionBrief(options?: {
   if (summary.settings.killSwitchActive) {
     whatNotToDo.push("Non disattivare il kill switch senza revisione consapevole.");
   }
-  if (priceWarnings.length > 0) {
-    whatNotToDo.push("Non comprare asset con prezzo stale o mancante.");
+  if (summary.priceQuality.hasUntrustedPrices) {
+    whatNotToDo.push("Non comprare con prezzi stale, manuali o mancanti.");
   }
   if (summary.risk.level === "RED" || summary.risk.level === "BLACK") {
     whatNotToDo.push("Non ignorare il blocco risk gate (RED/BLACK).");
@@ -396,7 +400,9 @@ export async function buildDailyDecisionBrief(options?: {
   const warnings = [
     ...summary.risk.reasons,
     ...summary.risk.warnings,
-    ...priceWarnings.map((p) => `Prezzo ${p.symbol}: ${p.status}`),
+    ...summary.priceQuality.warnings.map(
+      (p) => `Prezzo ${p.symbol}: ${p.status} (non trusted)`,
+    ),
   ];
 
   const safetyNotice = buildSafetyNotice(summary.settings.executionMode);

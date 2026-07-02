@@ -19,14 +19,28 @@ function safePasswordEqual(provided: string, expected: string): boolean {
   return mismatch === 0;
 }
 
+function authNotConfigured(): NextResponse {
+  return new NextResponse("Autenticazione non configurata.", {
+    status: 503,
+  });
+}
+
 export function middleware(request: NextRequest) {
   if (request.nextUrl.pathname === "/api/health") {
     return NextResponse.next();
   }
 
+  // Fail closed: this app exposes private portfolio data on /dashboard, /portfolio,
+  // /settings, /journal, /execution and related APIs. Never allow silent public access.
   const password = process.env.APP_PASSWORD?.trim();
+  const authDisabled = process.env.APP_AUTH_DISABLED === "true";
+
   if (!password) {
-    return NextResponse.next();
+    if (process.env.NODE_ENV !== "production" && authDisabled) {
+      return NextResponse.next();
+    }
+
+    return authNotConfigured();
   }
 
   const auth = request.headers.get("authorization");

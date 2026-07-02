@@ -30,20 +30,40 @@ describe("middleware auth", () => {
     process.env = { ...originalEnv };
   });
 
-  it("allows requests in production when APP_PASSWORD is missing", () => {
+  it("returns 503 in production when APP_PASSWORD is missing", () => {
     process.env.NODE_ENV = "production";
     delete process.env.APP_PASSWORD;
+    delete process.env.APP_AUTH_DISABLED;
+
+    const response = middleware(makeRequest());
+    expect(response.status).toBe(503);
+  });
+
+  it("returns 503 in development when APP_PASSWORD is missing and auth not disabled", () => {
+    process.env.NODE_ENV = "development";
+    delete process.env.APP_PASSWORD;
+    delete process.env.APP_AUTH_DISABLED;
+
+    const response = middleware(makeRequest());
+    expect(response.status).toBe(503);
+  });
+
+  it("allows local bypass only when APP_AUTH_DISABLED=true and not production", () => {
+    process.env.NODE_ENV = "development";
+    delete process.env.APP_PASSWORD;
+    process.env.APP_AUTH_DISABLED = "true";
 
     const response = middleware(makeRequest());
     expect(response.status).toBe(200);
   });
 
-  it("allows requests in development when APP_PASSWORD is missing", () => {
-    process.env.NODE_ENV = "development";
+  it("does not allow APP_AUTH_DISABLED bypass in production", () => {
+    process.env.NODE_ENV = "production";
     delete process.env.APP_PASSWORD;
+    process.env.APP_AUTH_DISABLED = "true";
 
     const response = middleware(makeRequest());
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(503);
   });
 
   it("returns 401 for invalid password", () => {

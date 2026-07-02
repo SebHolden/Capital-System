@@ -1,6 +1,10 @@
 import type { Bucket, PrismaClient } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { effectivePrice, resolvePrice } from "@/lib/prices";
+import {
+  effectivePrice,
+  isTrustedMarketPrice,
+  resolvePrice,
+} from "@/lib/prices";
 import type { PriceStatus, ResolvedPrice } from "@/lib/prices/types";
 import {
   evaluatePortfolio,
@@ -34,6 +38,68 @@ export interface PositionWithMarketPrice {
   currentValue: number;
   unrealizedPnl: number;
   resolvedPrice: ResolvedPrice;
+}
+
+export interface PriceQuality {
+  hasUntrustedPrices: boolean;
+  untrustedValue: number;
+  untrustedPct: number;
+  staleValue: number;
+  manualValue: number;
+  missingValue: number;
+  warnings: Array<{
+    symbol: string;
+    status: PriceStatus;
+    value: number;
+    weightPct: number;
+    source: string;
+    capturedAt: Date | null;
+  }>;
+}
+
+export function computePriceQuality(
+  positions: Array<{
+    asset: { symbol: string };
+    currentValue: number;
+    resolvedPrice: ResolvedPrice;
+  }>,
+  totalValue: number,
+): PriceQuality {
+  let staleValue = 0;
+  let manualValue = 0;
+  let missingValue = 0;
+  const warnings: PriceQuality["warnings"] = [];
+
+  for (const position of positions) {
+    const { status, source, capturedAt } = position.resolvedPrice;
+    if (status === "fresh") continue;
+
+    const value = position.currentValue;
+    if (status === "stale") staleValue += value;
+    else if (status === "manual") manualValue += value;
+    else if (status === "missing") missingValue += value;
+
+    warnings.push({
+      symbol: position.asset.symbol,
+      status,
+      value,
+      weightPct: totalValue > 0 ? (value / totalValue) * 100 : 0,
+      source,
+      capturedAt,
+    });
+  }
+
+  const untrustedValue = staleValue + manualValue + missingValue;
+
+  return {
+    hasUntrustedPrices: warnings.length > 0,
+    untrustedValue,
+    untrustedPct: totalValue > 0 ? (untrustedValue / totalValue) * 100 : 0,
+    staleValue,
+    manualValue,
+    missingValue,
+    warnings,
+  };
 }
 
 export async function getPositionsWithAssets(client: PrismaClient = prisma) {
@@ -86,7 +152,7 @@ export async function getPortfolioSummary(client: PrismaClient = prisma) {
   const settings = await getUserSettings(client);
   const positions = await getPositionsWithMarketPrices(client);
 
-  const portfolio = evaluatePortfolio({
+  const displayPortfolio = evaluatePortfolio({
     cashBalance: settings.cashBalance,
     experimentalCashBalance: settings.experimentalCashBalance,
     positions: positions.map((p) => ({
@@ -100,11 +166,27 @@ export async function getPortfolioSummary(client: PrismaClient = prisma) {
     })),
   });
 
+  const riskPortfolio = evaluatePortfolio({
+    cashBalance: settings.cashBalance,
+    experimentalCashBalance: settings.experimentalCashBalance,
+    positions: positions.map((p) => ({
+      assetId: p.assetId,
+      symbol: p.asset.symbol,
+      quantity: p.quantity,
+      avgPrice: p.avgPrice,
+      currentPrice: isTrustedMarketPrice(p.resolvedPrice) ? p.resolvedPrice.price : 0,
+      bucket: p.bucket,
+      assetType: p.asset.assetType as import("@prisma/client").AssetType,
+    })),
+  });
+
+  const portfolio = displayPortfolio;
+
   const { settings: syncedSettings, metrics: riskMetrics } =
-    await syncRiskBaselines(settings, portfolio.totalValue, client);
+    await syncRiskBaselines(settings, riskPortfolio.totalValue, client);
 
   const risk = getPortfolioRiskSummary({
-    bucketPcts: portfolio.bucketPcts,
+    bucketPcts: riskPortfolio.bucketPcts,
     maxBucketPct: syncedSettings.maxBucketPct,
     riskMetrics,
     settings: syncedSettings,
@@ -115,8 +197,10 @@ export async function getPortfolioSummary(client: PrismaClient = prisma) {
   const stressTest = runStressTest(portfolio.totalValue);
 
   const priceWarnings = positions.filter(
-    (p) => p.priceStatus === "stale" || p.priceStatus === "missing",
+    (p) => p.priceStatus !== "fresh",
   );
+
+  const priceQuality = computePriceQuality(positions, portfolio.totalValue);
 
   const journalQuality = await getJournalQualitySummary(client);
 
@@ -206,6 +290,8 @@ export async function getPortfolioSummary(client: PrismaClient = prisma) {
     maxPositionPct: syncedSettings.maxPositionPct,
     topPositionPct,
     journalQualityAvg: journalQuality.avgQualityScore,
+    hasUntrustedPrices: priceQuality.hasUntrustedPrices,
+    untrustedPricePct: priceQuality.untrustedPct,
   });
 
   const startOfDay = new Date();
@@ -236,6 +322,11 @@ export async function getPortfolioSummary(client: PrismaClient = prisma) {
     if (risk.blocked) {
       blockedOperations.push(...risk.reasons);
     }
+    if (priceQuality.hasUntrustedPrices) {
+      blockedOperations.push(
+        "Dati prezzo non affidabili: verifica prezzi prima di operare",
+      );
+    }
   }
 
   return {
@@ -247,6 +338,7 @@ export async function getPortfolioSummary(client: PrismaClient = prisma) {
     tradingWindow,
     stressTest,
     priceWarnings,
+    priceQuality,
     journalQuality,
     exposure: {
       assetTypePcts,

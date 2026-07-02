@@ -5,6 +5,7 @@ import { resolvePrice } from "@/lib/prices/resolve";
 import { validateJournalForOrder } from "@/lib/security";
 import {
   evaluateAveragingDownCheck,
+  evaluatePortfolioPriceTrustCheck,
   evaluateRejectedCooldownCheck,
   evaluateStalePriceCheck,
 } from "./checks";
@@ -44,6 +45,12 @@ export async function evaluateRiskGate(input: {
     assetType: AssetType;
   }>;
   dailyOrderCount: number;
+  executionMode?: "MOCK" | "PAPER" | "LIVE";
+  automatic?: boolean;
+  priceQuality?: {
+    hasUntrustedPrices: boolean;
+    untrustedPct: number;
+  };
 }): Promise<RiskAssessment> {
   if (input.settings.killSwitchActive) {
     return {
@@ -66,6 +73,12 @@ export async function evaluateRiskGate(input: {
     side: input.order.side,
     priceStatus: resolvedPrice.status,
     symbol: input.order.symbol,
+    automatic: input.automatic,
+  });
+  const portfolioPriceCheck = evaluatePortfolioPriceTrustCheck({
+    hasUntrustedPrices: input.priceQuality?.hasUntrustedPrices ?? false,
+    untrustedPct: input.priceQuality?.untrustedPct ?? 0,
+    executionMode: input.executionMode,
   });
   const existingPosition = input.positions.find(
     (p) => p.assetId === input.order.assetId,
@@ -78,15 +91,20 @@ export async function evaluateRiskGate(input: {
     hasPosition: (existingPosition?.quantity ?? 0) > 0,
   });
 
-  if (staleCheck.block || cooldownCheck.block || averagingCheck.block) {
+  if (staleCheck.block || cooldownCheck.block || averagingCheck.block || portfolioPriceCheck.block) {
     return {
       level: "RED",
       reasons: [
         ...staleCheck.reasons,
         ...cooldownCheck.reasons,
         ...averagingCheck.reasons,
+        ...portfolioPriceCheck.reasons,
       ],
-      warnings: [...staleCheck.warnings, ...cooldownCheck.warnings],
+      warnings: [
+        ...staleCheck.warnings,
+        ...cooldownCheck.warnings,
+        ...portfolioPriceCheck.warnings,
+      ],
       blocked: true,
       allowedAmount: 0,
     };

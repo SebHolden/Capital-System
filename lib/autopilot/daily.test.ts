@@ -43,6 +43,15 @@ vi.mock("@/lib/portfolio", () => ({
     },
     tradingWindow: { allowed: true },
     priceWarnings: [],
+    priceQuality: {
+      hasUntrustedPrices: false,
+      untrustedValue: 0,
+      untrustedPct: 0,
+      staleValue: 0,
+      manualValue: 0,
+      missingValue: 0,
+      warnings: [],
+    },
     operations: { blocked: [], allowed: ["DCA core"] },
   }),
 }));
@@ -95,7 +104,7 @@ describe("classifyAction", () => {
         riskLevel: "GREEN",
         killSwitchActive: true,
         liveTradingEnabled: false,
-        hasStalePrices: false,
+        hasUntrustedPrices: false,
       }),
     ).toBe("DO_NOTHING");
   });
@@ -106,22 +115,34 @@ describe("classifyAction", () => {
         riskLevel: "GREEN",
         killSwitchActive: false,
         liveTradingEnabled: false,
-        hasStalePrices: false,
+        hasUntrustedPrices: false,
         isCoreDca: true,
       }),
     ).toBe("MANUAL_APPROVAL_REQUIRED");
   });
 
-  it("returns REVIEW_MANUALLY for promoted strategies", () => {
+  it("returns REVIEW_MANUALLY for promoted strategies with trusted prices", () => {
     expect(
       classifyAction({
         riskLevel: "GREEN",
         killSwitchActive: false,
         liveTradingEnabled: false,
-        hasStalePrices: false,
+        hasUntrustedPrices: false,
         strategyPromoted: true,
       }),
     ).toBe("REVIEW_MANUALLY");
+  });
+
+  it("returns DO_NOTHING for promoted strategies with untrusted prices", () => {
+    expect(
+      classifyAction({
+        riskLevel: "GREEN",
+        killSwitchActive: false,
+        liveTradingEnabled: false,
+        hasUntrustedPrices: true,
+        strategyPromoted: true,
+      }),
+    ).toBe("DO_NOTHING");
   });
 });
 
@@ -131,7 +152,8 @@ describe("generateSuggestedActions", () => {
       riskLevel: "GREEN",
       killSwitchActive: false,
       liveTradingEnabled: false,
-      priceWarnings: [],
+      hasUntrustedPrices: false,
+      untrustedPriceWarnings: [],
       rankings: [
         {
           strategyId: "s1",
@@ -159,7 +181,8 @@ describe("generateSuggestedActions", () => {
       riskLevel: "GREEN",
       killSwitchActive: false,
       liveTradingEnabled: false,
-      priceWarnings: [],
+      hasUntrustedPrices: false,
+      untrustedPriceWarnings: [],
       rankings: [
         {
           strategyId: "s2",

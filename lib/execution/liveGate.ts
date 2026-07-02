@@ -45,16 +45,26 @@ export interface LiveGateInput {
   livePassphrase?: string;
 }
 
+export interface LivePriceTrustInput {
+  hasUntrustedPrices: boolean;
+  untrustedPct: number;
+}
+
 export async function assertLiveExecutionAllowed(
   input: LiveGateInput,
   settings: UserSettings,
   orderAmount: number,
+  priceTrust?: LivePriceTrustInput,
 ): Promise<void> {
   if (!isLiveTradingEnabled()) {
     throw new LiveNotEnabledError();
   }
 
   const reasons: string[] = [];
+
+  if (priceTrust?.hasUntrustedPrices && priceTrust.untrustedPct > 0) {
+    reasons.push("Esposizione con prezzi non trusted sopra soglia");
+  }
 
   const killSwitch = checkKillSwitch(settings);
   if (killSwitch.blocked) {

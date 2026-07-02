@@ -3,7 +3,7 @@ import { Prisma } from "@prisma/client";
 import { getBroker } from "@/lib/brokers";
 import type { ExecutionResult } from "@/lib/brokers/types";
 import { prisma } from "@/lib/db";
-import { getPositionsWithMarketPrices } from "@/lib/portfolio";
+import { getPositionsWithMarketPrices, computePriceQuality } from "@/lib/portfolio";
 import { effectivePrice, resolvePrice } from "@/lib/prices";
 import { evaluateRiskGate, simulateOrderImpact, syncRiskBaselines } from "@/lib/risk";
 import type { OrderImpact, RiskAssessment } from "@/lib/risk/types";
@@ -40,6 +40,8 @@ export interface SimulateOrderInput {
   quantity: number;
   limitPrice?: number;
   journalId?: string;
+  automatic?: boolean;
+  mode?: "MOCK" | "PAPER" | "LIVE";
 }
 
 export interface ExecuteOrderInput extends SimulateOrderInput {
@@ -125,10 +127,21 @@ async function buildRiskContext(input: SimulateOrderInput) {
       0,
     );
 
+  const priceQuality = computePriceQuality(
+    positions.map((p) => ({
+      asset: p.asset,
+      currentValue: p.currentValue,
+      resolvedPrice: p.resolvedPrice,
+    })),
+    portfolioValue,
+  );
+
   const { settings: syncedSettings, metrics: riskMetrics } =
     await syncRiskBaselines(settings, portfolioValue);
 
   const dailyOrderCount = await getDailyOrderCount();
+
+  const executionMode = input.mode ?? syncedSettings.executionMode;
 
   const assessment = await evaluateRiskGate({
     settings: syncedSettings,
@@ -145,6 +158,17 @@ async function buildRiskContext(input: SimulateOrderInput) {
     },
     positions: mappedPositions,
     dailyOrderCount,
+    executionMode:
+      executionMode === "LIVE"
+        ? "LIVE"
+        : executionMode === "PAPER"
+          ? "PAPER"
+          : "MOCK",
+    automatic: input.automatic,
+    priceQuality: {
+      hasUntrustedPrices: priceQuality.hasUntrustedPrices,
+      untrustedPct: priceQuality.untrustedPct,
+    },
   });
 
   const impact = simulateOrderImpact({
@@ -170,6 +194,7 @@ async function buildRiskContext(input: SimulateOrderInput) {
     assessment,
     impact,
     riskMetrics,
+    priceQuality,
   };
 }
 
@@ -490,7 +515,7 @@ export async function executeOrder(
 
   await checkExecutionRateLimit();
 
-  const { settings, asset, limitPrice, assessment, impact, journalValidation } =
+  const { settings, asset, limitPrice, assessment, impact, journalValidation, priceQuality } =
     await buildRiskContext(input);
 
   const requestedMode = input.mode ?? settings.executionMode;
@@ -567,6 +592,10 @@ export async function executeOrder(
         },
         settings,
         orderAmount,
+        {
+          hasUntrustedPrices: priceQuality.hasUntrustedPrices,
+          untrustedPct: priceQuality.untrustedPct,
+        },
       );
     } catch (error) {
       let auditAction = "LIVE_GATE_REJECTED";

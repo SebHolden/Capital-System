@@ -36,6 +36,7 @@ In **Project Settings → Environment Variables**, aggiungi:
 |-----------|--------|--------------|
 | `DATABASE_URL` | `postgresql://...` da Neon/Vercel Postgres | Sì |
 | `APP_PASSWORD` | Password forte per Basic auth | Sì |
+| `APP_AUTH_DISABLED` | `false` (o non impostata) | Sì — mai `true` in production |
 | `APP_BASE_URL` | `https://tuo-progetto.vercel.app` (URL finale HTTPS) | Sì |
 | `EXECUTION_MODE` | `mock` | Consigliato |
 | `ENABLE_LIVE_TRADING` | `false` | Consigliato |
@@ -102,7 +103,8 @@ Su Vercel non girano cron di sistema. Opzioni:
 |----------|-----------|
 | Build fallisce: `APP_PASSWORD is required` | Normale solo a **runtime** in production; se fallisce in build, verifica `instrumentation.ts` |
 | `databaseReachable: false` | Controlla `DATABASE_URL`, SSL (`?sslmode=require` su Neon), IP allowlist del provider |
-| 401 su tutte le pagine | Imposta `APP_PASSWORD`; in dev senza password l'auth è disabilitata |
+| 401 su tutte le pagine | Imposta `APP_PASSWORD`; senza password in production il middleware risponde 503 |
+| 503 su tutte le pagine | `APP_PASSWORD` mancante o vuota — impostala in Vercel Production env e ridistribuisci |
 | CSRF error su POST | `APP_BASE_URL` deve essere esattamente l'URL del sito (scheme + host) |
 | Migrazioni falliscono | Esegui `npx prisma migrate deploy` in locale con lo stesso `DATABASE_URL` per vedere l'errore |
 

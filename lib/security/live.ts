@@ -162,6 +162,7 @@ async function checkAlpacaLiveAccountItem(): Promise<ChecklistItem> {
 export async function getBrokerPermissionsChecklist(
   settings?: UserSettings,
   portfolioTotalValue?: number,
+  priceTrust?: { hasUntrustedPrices: boolean; untrustedPct: number },
 ): Promise<BrokerPermissionsChecklist> {
   const userSettings =
     settings ??
@@ -213,6 +214,15 @@ export async function getBrokerPermissionsChecklist(
       detail: promoted
         ? undefined
         : "Completa paper trading e promuovi una strategia in /strategies.",
+    },
+    {
+      id: "trusted_prices",
+      label: "Tutti i prezzi portfolio trusted (fresh)",
+      passed: !priceTrust?.hasUntrustedPrices,
+      required: true,
+      detail: priceTrust?.hasUntrustedPrices
+        ? `Esposizione non trusted: ${priceTrust.untrustedPct.toFixed(1)}% — aggiorna i prezzi prima del LIVE.`
+        : undefined,
     },
     {
       id: "monthly_live_within_limit",

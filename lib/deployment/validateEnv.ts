@@ -64,8 +64,14 @@ export function validateProductionEnv(
   }
 
   if (!env.APP_PASSWORD?.trim()) {
-    warnings.push(
-      "APP_PASSWORD is not set; the app is publicly accessible without Basic auth.",
+    errors.push(
+      "APP_PASSWORD is required in production; without it middleware returns 503 and blocks all routes except /api/health.",
+    );
+  }
+
+  if (env.APP_AUTH_DISABLED === "true") {
+    errors.push(
+      "APP_AUTH_DISABLED must not be true in production.",
     );
   }
 

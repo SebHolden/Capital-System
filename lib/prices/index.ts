@@ -23,6 +23,8 @@ export {
   resolvePrice,
   resolvePricesForAssets,
   resolvePortfolioAssetIds,
+  isTrustedMarketPrice,
+  isDisplayablePrice,
   isMarketPriceUsable,
   effectivePrice,
 } from "./resolve";

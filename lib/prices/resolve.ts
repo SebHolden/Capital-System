@@ -147,12 +147,22 @@ export async function resolvePortfolioAssetIds(
   return assets;
 }
 
-export function isMarketPriceUsable(resolved: ResolvedPrice): boolean {
+/** Only fresh market prices may drive risk-sensitive logic (PnL, exposure, risk score). */
+export function isTrustedMarketPrice(resolved: ResolvedPrice): boolean {
+  return resolved.price > 0 && resolved.status === "fresh";
+}
+
+/** Stale, manual, and missing prices may still be shown in the UI with warnings. */
+export function isDisplayablePrice(resolved: ResolvedPrice): boolean {
   return resolved.price > 0 && resolved.status !== "missing";
 }
 
+export function isMarketPriceUsable(resolved: ResolvedPrice): boolean {
+  return isDisplayablePrice(resolved);
+}
+
 export function effectivePrice(resolved: ResolvedPrice): number {
-  if (isMarketPriceUsable(resolved)) return resolved.price;
+  if (isDisplayablePrice(resolved)) return resolved.price;
   return resolved.fallbackAvgPrice ?? 0;
 }
 

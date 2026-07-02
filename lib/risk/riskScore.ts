@@ -7,6 +7,8 @@ export function computeRiskScore(input: {
   maxPositionPct: number;
   topPositionPct: number;
   journalQualityAvg: number;
+  hasUntrustedPrices?: boolean;
+  untrustedPricePct?: number;
 }): number {
   const levelPenalty: Record<RiskLevel, number> = {
     GREEN: 0,
@@ -32,6 +34,18 @@ export function computeRiskScore(input: {
 
   const journalPenalty = Math.max(0, 70 - input.journalQualityAvg);
   score += journalPenalty * 0.15;
+
+  if (input.hasUntrustedPrices) {
+    score += 10;
+  }
+
+  if ((input.untrustedPricePct ?? 0) >= 15) {
+    score += 20;
+  }
+
+  if ((input.untrustedPricePct ?? 0) >= 25) {
+    score = Math.max(score, 80);
+  }
 
   return Math.round(Math.min(100, Math.max(0, score)));
 }
